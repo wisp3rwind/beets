@@ -97,6 +97,9 @@ log.setLevel(logging.DEBUG)
 def Timecop():
     """Mocks the timing system (namely time() and sleep()) for testing.
     Inspired by the Ruby timecop library.
+
+    >>> with Timecop():
+    >>>     time.sleep(1)
     """
     now = time.time()
     *orig = time.time, time.sleep
@@ -111,7 +114,7 @@ def Timecop():
     yield
     time.time, time.sleep = *orig
 
-# Mock I/O: helpers
+# Mock IO
 
 
 class InputException(Exception):
@@ -125,33 +128,58 @@ class InputException(Exception):
         return msg
 
 
-class _LogCapture(logging.Handler):
-    def __init__(self):
-        logging.Handler.__init__(self)
-        self.messages = []
-
-    def emit(self, record):
-        self.messages.append(unicode(record.msg))
-
-# Mock IO
-
-
-@contextmanager
-def control_stdin(input=None):
+class control_stdin():
     """Sends ``input`` to stdin.
 
-    >>> with control_stdin('yes'):
+    >>> with control_stdin('yes') as inp:
+    ...     input()
+    ...     inp.addlines('no', 'foo')
+    ...     input()
     ...     input()
     'yes'
-    """
-    org = sys.stdin
-    sys.stdin = StringIO(input)
-    sys.stdin.encoding = 'utf8'
-    try:
-        yield sys.stdin
-    finally:
-        sys.stdin = org
+    'no'
+    'foo'
+    >>> inp.readcount()
+    2
 
+    Will raise ``InputException`` on readline calls that return empty strings.
+    The error message in that case can be enhanced if stdout is captured and
+    a related prompt is expected:
+
+    >>> with control_stdout() as out, control_stdin(out=out) as inp:
+    ...    input("Enter the name:")
+    InputException: "Enter the name:"
+    """
+
+    def __enter__(self, input=u'', out=None):
+        self.org = sys.stdin
+        sys.stdin = StringIO(input)
+        sys.stdin.encoding = 'utf8'
+        self.readcount = 0
+        self.out = out
+        return self
+
+    def __exit__(self):
+        sys.stdin = self.org
+
+    # Untested, not in use in any test right now. Here to keep the
+    # functionality DummyIn had.
+    def addline(self, *input):
+        pos = sys.stdin.tell()
+        sys.stdin.seek(0, os.SEEK_END)
+        sys.stdin.write(u'\n'.join(input) + u'\n')
+        sys.stdin.seek(pos)
+
+    # Same here. Functionality from DummyIn, might be unused
+    def readline(self, *args, **kwargs):
+        self.readcount += 1
+        res = super(control_stdin, self).readline(*args, **kwargs)
+        if not res:
+            if self.out:
+                raise InputException(self.out.getvalue())
+            else:
+                raise InputException()
+        return res
 
 @contextmanager
 def capture_stdout():
@@ -173,71 +201,25 @@ def capture_stdout():
         print(capture.getvalue())
 
 
-class DummyOut(object):
-    encoding = 'utf8'
-
+class _LogCapture(logging.Handler):
     def __init__(self):
-        self.buf = []
+        logging.Handler.__init__(self)
+        self.messages = []
 
-    def write(self, s):
-        self.buf.append(s)
-
-    def get(self):
-        return b''.join(self.buf)
-
-    def clear(self):
-        self.buf = []
-
-
-class DummyIn(object):
-    encoding = 'utf8'
-
-    def __enter__(self, out=None):
-        self.buf = []
-        self.reads = 0
-        self.out = out
-
-    def add(self, s):
-        self.buf.append(s + b'\n')
-
-    def readline(self):
-        if not self.buf:
-            if self.out:
-                raise InputException(self.out.get())
-            else:
-                raise InputException()
-        self.reads += 1
-        return self.buf.pop(0)
-
-
-class DummyIO(object):
-    """Mocks input and output streams for testing UI code."""
-    def __init__(self):
-        self.stdout = DummyOut()
-        self.stdin = DummyIn(self.stdout)
-
-    def addinput(self, s):
-        self.stdin.add(s)
-
-    def getoutput(self):
-        res = self.stdout.get()
-        self.stdout.clear()
-        return res
-
-    def readcount(self):
-        return self.stdin.reads
-
-    def install(self):
-        sys.stdin = self.stdin
-        sys.stdout = self.stdout
-
-    def restore(self):
-        sys.stdin = sys.__stdin__
-        sys.stdout = sys.__stdout__
-
+    def emit(self, record):
+        self.messages.append(unicode(record.msg))
 
 @contextmanager
 def capture_log(logger='beets'):
+    """Capture logs emitted through ``logging``, by default listens on the
+    main ``beets```logger, i.e. everything. Yields a list of the logged
+    messages.
+
+    >>> with capture_log as msg:
+    ...    log.debug('stuff')
+    >>> msg
+    ['stuff']
+    """
     capture = _LogCapture()
     log = logging.getLogger(logger)
     log.addHandler(capture)
@@ -321,8 +303,8 @@ class TestCase(unittest.TestCase):
     """A unittest.TestCase subclass that saves and restores beets'
     global configuration. This allows tests to make temporary
     modifications that will then be automatically removed when the test
-    completes. Also provides some additional assertion methods, a
-    temporary directory, and a DummyIO.
+    completes. Also provides some additional assertion methods and
+    temporary directory.
     """
 
     # Clean coonfiguration for every test
@@ -380,9 +362,6 @@ class TestCase(unittest.TestCase):
         os.environ['HOME'] = self.temp_dir
 
         self._loaded_plugins = []
-
-        # Initialize, but don't install, a DummyIO.
-        self.io = DummyIO()
 
     def tearDown(self):
         if self._loaded_plugins:
