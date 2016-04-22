@@ -15,8 +15,9 @@
 # included in all copies or substantial portions of the Software.
 
 # TODO:
-# clean up IO mocking
 # ensure everything gets cleaned up automatically
+# purge redundant temp_dir code from tests
+# check IO-mocking code in tests
 
 
 """This module includes various helpers that provide fixtures, capture
@@ -491,17 +492,6 @@ class TestCase(unittest.TestCase):
 
     # Safe file operations
 
-    @contextmanager
-    @classmethod
-    def temp_dir(cls):
-        temp_dir = mkdtemp()
-        yield temp_dir
-        shutil.rmtree(temp_dir)
-
-    @classmethod
-    def touch(cls, path):
-        open(path, 'a').close()
-
     def touch(self, path, dir=None, content=''):
         """Create a file at `path` with given content.
 
@@ -519,9 +509,8 @@ class TestCase(unittest.TestCase):
         if not os.path.isdir(parent):
             os.makedirs(parent)
 
-        if content:
-            with open(path, 'a+') as f:
-                f.write(content)
+        with open(path, 'a+') as f:
+            f.write(content)
         return path
 
     # dummy items/albums
