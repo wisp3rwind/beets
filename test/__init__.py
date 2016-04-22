@@ -84,6 +84,7 @@ HAVE_SYMLINK = hasattr(os, 'symlink')
 # Test resources path.
 RSRC = os.path.join(os.path.dirname(__file__), b'rsrc')
 
+
 # Propagate to root loger so nosetest can capture it
 log = logging.getLogger('beets')
 log.propagate = True
@@ -114,6 +115,7 @@ def Timecop():
     yield
     time.time, time.sleep = *orig
 
+
 # Mock IO
 
 
@@ -142,7 +144,8 @@ class control_stdin():
     >>> inp.readcount()
     2
 
-    Will raise ``InputException`` on readline calls that return empty strings.
+    Will raise ``InputException`` on readline calls when the buffer is
+    exhausted.
     The error message in that case can be enhanced if stdout is captured and
     a related prompt is expected:
 
@@ -233,6 +236,8 @@ def capture_log(logger='beets'):
 
 @contextmanager
 def platform_windows():
+    """Load ntpath as os.path
+    """
     import ntpath
     old_path = os.path
     try:
@@ -244,6 +249,8 @@ def platform_windows():
 
 @contextmanager
 def platform_posix():
+    """Load posixpath as os.path
+    """
     import posixpath
     old_path = os.path
     try:
@@ -255,6 +262,15 @@ def platform_posix():
 
 @contextmanager
 def system_mock(name):
+    """Mocks the system name.
+
+    >>> import platform
+    >>> platform.system()
+    'Linux'
+    >>> with system_mock('Windows'):
+    ...     platform.system()
+    'Windows'
+    """
     import platform
     old_system = platform.system
     platform.system = lambda: name
