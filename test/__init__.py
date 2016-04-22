@@ -47,11 +47,11 @@ import os.path
 import shutil
 import time
 import subprocess
-from tempfile import mkdtemp, mkstemp
 from contextlib import contextmanager
+from enum import Enum
 from functools import wraps
 from StringIO import StringIO
-from enum import Enum
+from tempfile import mkdtemp, mkstemp
 
 # Use unittest2 on Python < 2.7.
 try:
@@ -65,9 +65,8 @@ import beets
 import beets.library
 import beets.plugins
 from beets import importer, logging
-# from beets.ui import commands
-from beets.library import Library, Item, Album
 from beets.autotag.hooks import AlbumInfo, TrackInfo
+from beets.library import Library, Item, Album
 from beets.mediafile import MediaFile, Image
 from beets.ui import _arg_encoding
 
@@ -154,15 +153,18 @@ class control_stdin():
     InputException: "Enter the name:"
     """
 
-    def __enter__(self, input=u'', out=None):
-        self.org = sys.stdin
-        sys.stdin = StringIO(input)
-        sys.stdin.encoding = 'utf8'
+    def __init__(self, input=u'', out=None):
+        self.stdin = StringIO(input)
+        self.stdin.encoding = 'utf8'
         self.readcount = 0
         self.out = out
+
+    def __enter__(self):
+        self.org = sys.stdin
+        sys.stdin = self.stdin
         return self
 
-    def __exit__(self):
+    def __exit__(self, exc_type, exc_value, traceback):
         sys.stdin = self.org
 
     # Untested, not in use in any test right now. Here to keep the
@@ -285,6 +287,13 @@ def system_mock(name):
 
 # Utility.
 
+def slow_test(unused=None):
+    def _id(obj):
+        return obj
+    if 'SKIP_SLOW_TESTS' in os.environ:
+        return unittest.skip(u'test is slow')
+    return _id
+
 
 # TODO: replace by collections.defaultdict ?
 class Bag(object):
@@ -367,15 +376,15 @@ class TestCase(unittest.TestCase):
 
         self._mediafile_fixtures = []
 
-        self.config['plugins'] = []
-        self.config['verbose'] = 1
-        # self.config['ui']['color'] = False
-        # self.config['threaded'] = False
+        beets.config['plugins'] = []
+        beets.config['verbose'] = 1
+        # beets.config['ui']['color'] = False
+        # beets.config['threaded'] = False
 
         # load test-specific config supplied by the wrapper if it is supposed
         # to run here. This is useful have different configurations per
         # testcase, but still load plugins in setUp()
-        func = self.getattr(self._testMethodName)
+        func = getattr(self, self._testMethodName)
         if hasattr(func, '__beets_config') and \
                 func.__beets_config_before_setup:
             # use set(), not add(). This way, it is the highest priority source
@@ -398,6 +407,8 @@ class TestCase(unittest.TestCase):
             beets.plugins._instances = {}
             Item._types = Item._original_types
             Album._types = Album._original_types
+            del Item._original_types
+            del Album._original_types
 
         for path in self._mediafile_fixtures:
             os.remove(path)
@@ -411,7 +422,6 @@ class TestCase(unittest.TestCase):
             del os.environ['HOME']
         else:
             os.environ['HOME'] = self._old_home
-        self.io.restore()
 
         beets.config.clear()
         beets.config._materialized = False
@@ -466,7 +476,8 @@ class TestCase(unittest.TestCase):
         """
         self._loaded_plugins.extend(plugins)
         # FIXME this should eventually be handled by a plugin manager
-        beets.config['plugins'].extend(plugins)
+        old_plug = set(beets.config['plugins'].get())
+        beets.config['plugins'] = list(old_plug.union(plugins))
         beets.plugins.load_plugins(plugins)
         beets.plugins.find_plugins()
         # Take a backup of the original _types to restore when unloading
@@ -476,13 +487,6 @@ class TestCase(unittest.TestCase):
             Album._original_types = dict(Album._types)
         Item._types.update(beets.plugins.types(Item))
         Album._types.update(beets.plugins.types(Album))
-
-    def slow_test(unused=None):
-        def _id(obj):
-            return obj
-        if 'SKIP_SLOW_TESTS' in os.environ:
-            return unittest.skip(u'test is slow')
-        return _id
 
     # convenient assertions
 
@@ -612,7 +616,7 @@ class TestCase(unittest.TestCase):
         """Copies a fixture mediafile with the extension to a temporary
         location and returns the path.
 
-        It keeps track of the created locations and will delete them in 
+        It keeps track of the created locations and will delete them in
         `tearDown()`.
         `images` is a subset of 'png', 'jpg', and 'tiff'. For each
         specified extension a cover art image is added to the media
@@ -645,15 +649,9 @@ class TestCase(unittest.TestCase):
         return count
 
     # Running beets commands
-    # TODO: do tests using this always need a library? Then move
-    # to LibTestCase
 
     def run_command(self, *args):
-        if hasattr(self, 'lib'):
-            lib = self.lib
-        else:
-            lib = Library(':memory:')
-        beets.ui._raw_main(list(args), lib)
+        beets.ui._raw_main(list(args), self.lib)
 
     def run_with_output(self, *args):
         with capture_stdout() as out:
@@ -662,22 +660,22 @@ class TestCase(unittest.TestCase):
 
 
 class LibTestCase(TestCase):
-    """A test case that includes an in-memory library object (`lib`) and
+    """A test case that includes a library object (`lib`) and
     an item added to the library (`i`).
-    TODO: check whether i is actually used anywhere
+    If `disk` is True, the `libdir` will be created. Else, the library
+    will be in-memory.
     """
     def setUp(self, disk=False, **kwargs):
         super(LibTestCase, self).setUp(**kwargs)
         if disk:
             os.mkdir(self.libdir)
-            dbpath = self.config['library'].as_filename()
+            dbpath = beets.config['library'].as_filename()
         else:
             dbpath = ':memory:'
         self.lib = Library(dbpath, self.libdir)
-        self.i = self.create_item()
+        # self.i = self.add_item()
 
     def tearDown(self):
-        del self.lib._connections
         self.lib._connection().close()
         super(LibTestCase, self).tearDown()
 
@@ -723,9 +721,9 @@ class LibTestCase(TestCase):
                 })
                 mediafile.save()
 
-        self.config['import']['quiet'] = True
-        self.config['import']['autotag'] = False
-        self.config['import']['resume'] = False
+        beets.config['import']['quiet'] = True
+        beets.config['import']['autotag'] = False
+        beets.config['import']['resume'] = False
 
         return TestImportSession(self.lib, loghandler=None, query=None,
                                  paths=[import_dir])
@@ -804,7 +802,7 @@ class TestImportSession(importer.ImportSession):
     >>> importer.run()
 
     This imports ``/path/to/import`` into `lib`. It skips the first
-    album and imports thesecond one with metadata from the tags. For the
+    album and imports the second one with metadata from the tags. For the
     remaining albums, the metadata from the autotagger will be applied.
     """
 
