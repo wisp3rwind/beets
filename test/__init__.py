@@ -62,7 +62,6 @@ except ImportError:
 # Mangle the search path to include the beets sources.
 sys.path.insert(0, '..')  # noqa
 import beets
-import beets.config
 import beets.library
 import beets.plugins
 from beets import importer, logging
@@ -104,7 +103,7 @@ def Timecop():
     >>>     time.sleep(1)
     """
     now = time.time()
-    *orig = time.time, time.sleep
+    orig = time.time, time.sleep
 
     def time():
         return now
@@ -114,7 +113,7 @@ def Timecop():
 
     time.time, time.sleep = time, sleep
     yield
-    time.time, time.sleep = *orig
+    time.time, time.sleep = orig
 
 
 # Mock IO
@@ -366,6 +365,8 @@ class TestCase(unittest.TestCase):
         self.libdir = os.path.join(self.temp_dir, 'libdir')
         beets.config['directory'] = self.libdir
 
+        self._mediafile_fixtures = []
+
         self.config['plugins'] = []
         self.config['verbose'] = 1
         # self.config['ui']['color'] = False
@@ -397,6 +398,9 @@ class TestCase(unittest.TestCase):
             beets.plugins._instances = {}
             Item._types = Item._original_types
             Album._types = Album._original_types
+
+        for path in self._mediafile_fixtures:
+            os.remove(path)
 
         if os.path.isdir(self.temp_dir):
             shutil.rmtree(self.temp_dir)
@@ -513,68 +517,7 @@ class TestCase(unittest.TestCase):
             f.write(content)
         return path
 
-    # dummy items/albums
-
-    _item_ident = 0
-
-    def create_item(self):
-        self._item_ident += 1
-        i = beets.library.Item(
-            title=u'the title',
-            artist=u'the artist',
-            albumartist=u'the album artist',
-            album=u'the album',
-            genre=u'the genre',
-            composer=u'the composer',
-            grouping=u'the grouping',
-            year=1,
-            month=2,
-            day=3,
-            track=4,
-            tracktotal=5,
-            disc=6,
-            disctotal=7,
-            lyrics=u'the lyrics',
-            comments=u'the comments',
-            bpm=8,
-            comp=True,
-            path='somepath{0}'.format(self._item_ident),
-            length=60.0,
-            bitrate=128000,
-            format='FLAC',
-            mb_trackid='someID-1',
-            mb_albumid='someID-2',
-            mb_artistid='someID-3',
-            mb_albumartistid='someID-4',
-            album_id=None,
-        )
-        if hasattr(self, 'lib'):
-            self.lib.add(i)
-        return i
-
-    _album_ident = 0
-
-    def create_album(self):
-        self._item_ident += 1
-        i = beets.library.Album(
-            artpath=None,
-            albumartist=u'some album artist',
-            albumartist_sort=u'some sort album artist',
-            albumartist_credit=u'some album artist credit',
-            album=u'the album',
-            genre=u'the genre',
-            year=2014,
-            month=2,
-            day=5,
-            tracktotal=0,
-            disctotal=1,
-            comp=False,
-            mb_albumid='someID-1',
-            mb_albumartistid='someID-1'
-        )
-        if hasattr(self, 'lib'):
-            self.lib.add(i)
-        return i
+    # dummy info classes for autotag
 
     ALBUM_INFO_FIELDS = ['album', 'album_id', 'artist', 'artist_id',
                          'asin', 'albumtype', 'va', 'label',
@@ -626,19 +569,18 @@ class TestCase(unittest.TestCase):
         return track
 
     # Library fixtures methods
-    # TODO: should some of these go to LibTestCase
 
     def create_item(self, **values):
         """Return an `Item` instance with sensible default values.
 
-        The item receives its attributes from `**values` paratmeter. The
+        The item receives its attributes from `**values` parameter. The
         `title`, `artist`, `album`, `track`, `format` and `path`
         attributes have defaults if they are not given as parameters.
         The `title` attribute is formated with a running item count to
         prevent duplicates. The default for the `path` attribute
         respects the `format` value.
 
-        The item is attached to the database from `self.lib`.
+        The item is attached to the database from `self.lib` if it exists.
         """
         item_count = self._get_item_count()
         values_ = {
@@ -650,79 +592,28 @@ class TestCase(unittest.TestCase):
         }
         values_.update(values)
         values_['title'] = values_['title'].format(item_count)
-        values_['db'] = self.lib
         item = Item(**values_)
         if 'path' not in values:
             item['path'] = 'audio.' + item['format'].lower()
         return item
 
-    def add_item(self, **values):
-        """Add an item to the library and return it.
-
-        Creates the item by passing the parameters to `create_item()`.
-
-        If `path` is not set in `values` it is set to `item.destination()`.
-        """
-        item = self.create_item(**values)
-        item.add(self.lib)
-        if 'path' not in values:
-            item['path'] = item.destination()
-            item.store()
-        return item
-
-    def add_item_fixture(self, **values):
-        """Add an item with an actual audio file to the library.
-        """
-        item = self.create_item(**values)
-        extension = item['format'].lower()
-        item['path'] = os.path.join(RSRC, 'min.' + extension)
-        item.add(self.lib)
-        item.move(copy=True)
-        item.store()
-        return item
-
-    def add_album(self, **values):
-        item = self.add_item(**values)
-        return self.lib.add_album([item])
-
-    def add_item_fixtures(self, ext='mp3', count=1):
-        """Add a number of items with files to the database.
-        """
-        # TODO base this on `add_item()`
-        items = []
-        path = os.path.join(RSRC, 'full.' + ext)
-        for i in range(count):
-            item = Item.from_path(bytes(path))
-            item.album = u'\u00e4lbum {0}'.format(i)  # Check unicode paths
-            item.title = u't\u00eftle {0}'.format(i)
-            item.add(self.lib)
-            item.move(copy=True)
-            item.store()
-            items.append(item)
-        return items
-
-    def add_album_fixture(self, track_count=1, ext='mp3'):
-        """Add an album with files to the database.
-        """
-        items = []
-        path = os.path.join(RSRC, 'full.' + ext)
-        for i in range(track_count):
-            item = Item.from_path(bytes(path))
-            item.album = u'\u00e4lbum'  # Check unicode paths
-            item.title = u't\u00eftle {0}'.format(i)
-            item.add(self.lib)
-            item.move(copy=True)
-            item.store()
-            items.append(item)
-        return self.lib.add_album(items)
+    def create_album(self, values):
+        # TODO: check whether more default values should be added
+        # (or whether this function should be dropped instead)
+        values_ = {
+            'albumartist': u't\u00eftle {0}',
+            'album': u'the \u00e4lbum',
+        }
+        values_.update(values)
+        album = Album(**values_)
+        return album
 
     def create_mediafile_fixture(self, ext='mp3', images=[]):
         """Copies a fixture mediafile with the extension to a temporary
         location and returns the path.
 
-        It keeps track of the created locations and will delete the with
-        `remove_mediafile_fixtures()`
-
+        It keeps track of the created locations and will delete them in 
+        `tearDown()`.
         `images` is a subset of 'png', 'jpg', and 'tiff'. For each
         specified extension a cover art image is added to the media
         file.
@@ -743,16 +634,9 @@ class TestCase(unittest.TestCase):
             mediafile.images = imgs
             mediafile.save()
 
-        if not hasattr(self, '_mediafile_fixtures'):
-            self._mediafile_fixtures = []
         self._mediafile_fixtures.append(path)
 
         return path
-
-    def remove_mediafile_fixtures(self):
-        if hasattr(self, '_mediafile_fixtures'):
-            for path in self._mediafile_fixtures:
-                os.remove(path)
 
     def _get_item_count(self):
         if not hasattr(self, '__item_count'):
@@ -780,7 +664,7 @@ class TestCase(unittest.TestCase):
 class LibTestCase(TestCase):
     """A test case that includes an in-memory library object (`lib`) and
     an item added to the library (`i`).
-    # TODO: check whether i is actually used anywhere
+    TODO: check whether i is actually used anywhere
     """
     def setUp(self, disk=False, **kwargs):
         super(LibTestCase, self).setUp(**kwargs)
@@ -845,6 +729,68 @@ class LibTestCase(TestCase):
 
         return TestImportSession(self.lib, loghandler=None, query=None,
                                  paths=[import_dir])
+
+    def add_item(self, **values):
+        """Add an item to the library and return it.
+
+        Creates the item by passing the parameters to `create_item()`.
+
+        If `path` is not set in `values` it is set to `item.destination()`.
+        """
+        item = self.create_item(**values)
+        item.add(self.lib)
+        if 'path' not in values:
+            item['path'] = item.destination()
+            item.store()
+        return item
+
+    def add_item_fixture(self, **values):
+        """Add an item with an actual audio file to the library.
+        """
+        item = self.create_item(**values)
+        extension = item['format'].lower()
+        item['path'] = os.path.join(RSRC, 'min.' + extension)
+        item.add(self.lib)
+        item.move(copy=True)
+        item.store()
+        return item
+
+    def add_album(self, item_count, album_fields={}, item_fields={}):
+        items = [self.add_item(item_fields) for i in range(item_count)]
+        album = self.lib.add_album(items)
+        album.update(album_fields)
+        return album
+
+    def add_item_fixtures(self, ext='mp3', count=1):
+        """Add a number of items with files to the database.
+        """
+        # TODO base this on `add_item()`
+        items = []
+        path = os.path.join(RSRC, 'full.' + ext)
+        for i in range(count):
+            item = Item.from_path(bytes(path))
+            item.album = u'\u00e4lbum {0}'.format(i)  # Check unicode paths
+            item.title = u't\u00eftle {0}'.format(i)
+            item.add(self.lib)
+            item.move(copy=True)
+            item.store()
+            items.append(item)
+        return items
+
+    def add_album_fixture(self, track_count=1, ext='mp3'):
+        """Add an album with files to the database.
+        """
+        items = []
+        path = os.path.join(RSRC, 'full.' + ext)
+        for i in range(track_count):
+            item = Item.from_path(bytes(path))
+            item.album = u'\u00e4lbum'  # Check unicode paths
+            item.title = u't\u00eftle {0}'.format(i)
+            item.add(self.lib)
+            item.move(copy=True)
+            item.store()
+            items.append(item)
+        return self.lib.add_album(items)
 
 
 class TestImportSession(importer.ImportSession):
