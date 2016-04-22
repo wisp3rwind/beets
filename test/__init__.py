@@ -184,6 +184,7 @@ class control_stdin():
                 raise InputException()
         return res
 
+
 @contextmanager
 def capture_stdout():
     """Save stdout in a StringIO.
@@ -212,6 +213,7 @@ class _LogCapture(logging.Handler):
     def emit(self, record):
         self.messages.append(unicode(record.msg))
 
+
 @contextmanager
 def capture_log(logger='beets'):
     """Capture logs emitted through ``logging``, by default listens on the
@@ -233,6 +235,7 @@ def capture_log(logger='beets'):
 
 
 # Platform mocking.
+
 
 @contextmanager
 def platform_windows():
@@ -282,6 +285,8 @@ def system_mock(name):
 
 # Utility.
 
+
+# TODO: replace by collections.defaultdict ?
 class Bag(object):
     """An object that exposes a set of fields given as keyword
     arguments. Any field not found in the dictionary appears to be None.
@@ -314,6 +319,7 @@ def has_program(cmd, args=['--version']):
 
 
 # Extend TestCase
+
 
 class TestCase(unittest.TestCase):
     """A unittest.TestCase subclass that saves and restores beets'
@@ -352,6 +358,7 @@ class TestCase(unittest.TestCase):
         # Direct paths to a temporary directory. Tests can also use this
         # temporary directory.
         # TODO: how much time does this consume? should it be done more lazily?
+        # How many tests actually need a temporary dir?
         self.temp_dir = mkdtemp()
         beets.config['statefile'] = os.path.join(self.temp_dir, 'state.pickle')
         beets.config['library'] = os.path.join(self.temp_dir, 'library.db')
@@ -369,7 +376,9 @@ class TestCase(unittest.TestCase):
         func = self.getattr(self._testMethodName)
         if hasattr(func, '__beets_config') and \
                 func.__beets_config_before_setup:
-            beets.config.add(func.__beets_config)
+            # use set(), not add(). This way, it is the highest priority source
+            # until more options are set()
+            beets.config.set(func.__beets_config)
 
         # Set $HOME, which is used by confit's `config_dir()` to create
         # directories.
@@ -403,13 +412,43 @@ class TestCase(unittest.TestCase):
         beets.config._materialized = False
 
     def with_config(self, func, config, before_setup=True):
+        """A decorator to simplify configuration changes per test method.
+        When setting `before_setup`, the changes will be applied in this
+        class' setUp(). This way, the configuration already is in effect in
+        the test module's setUp() and can, for example, influence plugins
+        loaded there.
+
+        >>> class UseThePlugin(TestCase):
+        ...     def setUp(self):
+        ...         super(UseThePlugin, self).setUp()
+        ...         # load plugin with per-method config
+        ...         self.plug = theplugin.ThePlugin()
+        ...
+        ... class MyTest(UseThePlugin):
+        ...     @with_config({u'theplugin': {u'the_answer': 42}})
+        ...     def test_it(self):
+        ...         # when the plugin was loaded, the configuration set
+        ...         # through the decorator was in effect!
+        ...         pass
+
+        Order of precedence when setting options with this decorator (if
+        nothing else is stated 'set' means set via `config.set()` or
+        `config['opt'] = `):
+            - options set in the test method will shadow everything else
+            - options set through the decorator with `before_setup=False` will
+              shadow options set in setUp()
+            - options set in setUp() will shadow those set through the
+              decorator with `before_setup=True`
+            - anything set per config.add() will be shadowed by all of the
+              above methods
+        """
         func.__beets_config = config
         func.__beets_config_before_setup = before_setup
 
         @wraps(func)
         def apply_config(*args, **kwargs):
             if not func.__beets_config_before_setup:
-                beets.config.add(config)
+                beets.config.set(config)
             func(*args, **kwargs)
 
         return apply_config
