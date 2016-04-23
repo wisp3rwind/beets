@@ -17,8 +17,9 @@
 """
 from __future__ import division, absolute_import, print_function
 
-from test import _common
-from test._common import unittest
+import test
+from test import unittest
+
 from datetime import datetime
 import time
 from beets.dbcore.query import _parse_periods, DateInterval, DateQuery
@@ -80,9 +81,10 @@ def _parsetime(s):
     return time.mktime(datetime.strptime(s, '%Y-%m-%d %H:%M').timetuple())
 
 
-class DateQueryTest(_common.LibTestCase):
+class DateQueryTest(test.LibTestCase):
     def setUp(self):
         super(DateQueryTest, self).setUp()
+        self.i = self.add_item()
         self.i.added = _parsetime('2013-03-30 22:21')
         self.i.store()
 
