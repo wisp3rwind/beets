@@ -17,20 +17,18 @@
 
 from __future__ import division, absolute_import, print_function
 
-from test._common import unittest
-from beetsplug import bucket
+import test
+from test import unittest
+
 from beets import config, ui
 
-from test.helper import TestHelper
+from beetsplug import bucket
 
 
-class BucketPluginTest(unittest.TestCase, TestHelper):
+class BucketPluginTest(test.TestCase):
     def setUp(self):
-        self.setup_beets()
+        super(BucketPluginTest, self).setUp()
         self.plugin = bucket.BucketPlugin()
-
-    def tearDown(self):
-        self.teardown_beets()
 
     def _setup_config(self, bucket_year=[], bucket_alpha=[],
                       bucket_alpha_regex={}, extrapolate=False):
