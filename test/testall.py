@@ -21,7 +21,7 @@ import os
 import re
 import sys
 
-from test._common import unittest
+from test import unittest
 
 pkgpath = os.path.dirname(__file__) or '.'
 sys.path.append(pkgpath)
