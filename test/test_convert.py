@@ -17,16 +17,15 @@ from __future__ import division, absolute_import, print_function
 
 import re
 import os.path
-from test import _common
-from test._common import unittest
-from test import helper
-from test.helper import control_stdin
+
+import test
+from test import unittest, control_stdin
 
 from beets.mediafile import MediaFile
-from beets import util
+from beets import config, util
 
 
-class TestHelper(helper.TestHelper):
+class TestHelper(unittest.TestCase):
 
     def tagged_copy_cmd(self, tag):
         """Return a conversion command that copies files and appends
@@ -44,34 +43,36 @@ class TestHelper(helper.TestHelper):
         """Assert that the path is a file and the files content ends with `tag`.
         """
         self.assertTrue(os.path.isfile(path),
-                        u'{0} is not a file'.format(path))
+                        u'{0} is not a file'.format(util.displayable_path(path)))
         with open(path) as f:
             f.seek(-len(tag), os.SEEK_END)
             self.assertEqual(f.read(), tag,
-                             u'{0} is not tagged with {1}'.format(path, tag))
+                             u'{0} is not tagged with {1}'.format(
+                                 util.displayable_path(path), tag))
 
     def assertNoFileTag(self, path, tag):
         """Assert that the path is a file and the files content does not
         end with `tag`.
         """
         self.assertTrue(os.path.isfile(path),
-                        u'{0} is not a file'.format(path))
+                        u'{0} is not a file'.format(
+                            util.displayable_path(path)))
         with open(path) as f:
             f.seek(-len(tag), os.SEEK_END)
             self.assertNotEqual(f.read(), tag,
                                 u'{0} is unexpectedly tagged with {1}'
-                                .format(path, tag))
+                                .format(util.displayable_path(path), tag))
 
 
-@_common.slow_test()
-class ImportConvertTest(unittest.TestCase, TestHelper):
+@test.slow_test()
+class ImportConvertTest(test.LibTestCase, TestHelper):
 
     def setUp(self):
-        self.setup_beets(disk=True)  # Converter is threaded
+        super(ImportConvertTest, self).setUp(disk=True)  # Converter is threaded
         self.importer = self.create_importer()
         self.load_plugins('convert')
 
-        self.config['convert'] = {
+        config['convert'] = {
             'dest': os.path.join(self.temp_dir, 'convert'),
             'command': self.tagged_copy_cmd('convert'),
             # Enforce running convert
@@ -80,10 +81,6 @@ class ImportConvertTest(unittest.TestCase, TestHelper):
             'quiet': False,
         }
 
-    def tearDown(self):
-        self.unload_plugins()
-        self.teardown_beets()
-
     def test_import_converted(self):
         self.importer.run()
         item = self.lib.items().get()
@@ -91,7 +88,7 @@ class ImportConvertTest(unittest.TestCase, TestHelper):
 
     def test_import_original_on_convert_error(self):
         # `false` exits with non-zero code
-        self.config['convert']['command'] = u'false'
+        config['convert']['command'] = u'false'
         self.importer.run()
 
         item = self.lib.items().get()
@@ -99,11 +96,11 @@ class ImportConvertTest(unittest.TestCase, TestHelper):
         self.assertTrue(os.path.isfile(item.path))
 
 
-@_common.slow_test()
-class ConvertCliTest(unittest.TestCase, TestHelper):
+@test.slow_test()
+class ConvertCliTest(test.LibTestCase, TestHelper):
 
     def setUp(self):
-        self.setup_beets(disk=True)  # Converter is threaded
+        super(ConvertCliTest, self).setUp(disk=True)  # Converter is threaded
         self.album = self.add_album_fixture(ext='ogg')
         self.item = self.album.items()[0]
         self.load_plugins('convert')
@@ -111,7 +108,7 @@ class ConvertCliTest(unittest.TestCase, TestHelper):
         self.convert_dest = util.bytestring_path(
             os.path.join(self.temp_dir, 'convert_dest')
         )
-        self.config['convert'] = {
+        config['convert'] = {
             'dest': self.convert_dest,
             'paths': {'default': 'converted'},
             'format': 'mp3',
@@ -123,10 +120,6 @@ class ConvertCliTest(unittest.TestCase, TestHelper):
                 }
             }
         }
-
-    def tearDown(self):
-        self.unload_plugins()
-        self.teardown_beets()
 
     def test_convert(self):
         with control_stdin('y'):
@@ -161,8 +154,8 @@ class ConvertCliTest(unittest.TestCase, TestHelper):
         self.assertFileTag(converted, 'opus')
 
     def test_embed_album_art(self):
-        self.config['convert']['embed'] = True
-        image_path = os.path.join(_common.RSRC, 'image-2x3.jpg')
+        config['convert']['embed'] = True
+        image_path = os.path.join(test.RSRC, 'image-2x3.jpg')
         self.album.artpath = image_path
         self.album.store()
         with open(os.path.join(image_path)) as f:
@@ -187,17 +180,17 @@ class ConvertCliTest(unittest.TestCase, TestHelper):
         self.assertFalse(os.path.exists(converted))
 
 
-@_common.slow_test()
-class NeverConvertLossyFilesTest(unittest.TestCase, TestHelper):
+@test.slow_test()
+class NeverConvertLossyFilesTest(test.LibTestCase, TestHelper):
     """Test the effect of the `never_convert_lossy_files` option.
     """
 
     def setUp(self):
-        self.setup_beets(disk=True)  # Converter is threaded
+        super(NeverConvertLossyFilesTest, self).setUp(disk=True)  # Converter is threaded
         self.load_plugins('convert')
 
         self.convert_dest = os.path.join(self.temp_dir, 'convert_dest')
-        self.config['convert'] = {
+        config['convert'] = {
             'dest': self.convert_dest,
             'paths': {'default': 'converted'},
             'never_convert_lossy_files': True,
@@ -207,10 +200,6 @@ class NeverConvertLossyFilesTest(unittest.TestCase, TestHelper):
             }
         }
 
-    def tearDown(self):
-        self.unload_plugins()
-        self.teardown_beets()
-
     def test_transcode_from_lossles(self):
         [item] = self.add_item_fixtures(ext='flac')
         with control_stdin('y'):
@@ -219,7 +208,7 @@ class NeverConvertLossyFilesTest(unittest.TestCase, TestHelper):
         self.assertFileTag(converted, 'mp3')
 
     def test_transcode_from_lossy(self):
-        self.config['convert']['never_convert_lossy_files'] = False
+        config['convert']['never_convert_lossy_files'] = False
         [item] = self.add_item_fixtures(ext='ogg')
         with control_stdin('y'):
             self.run_command('convert', item.path)
