@@ -19,7 +19,7 @@ from __future__ import division, absolute_import, print_function
 
 import warnings
 
-from test._common import unittest
+from test import unittest
 from beets.util import functemplate
 
 
