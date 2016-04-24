@@ -21,8 +21,8 @@ import os
 import shutil
 import sqlite3
 
-from test import _common
-from test._common import unittest
+import test
+from test import unittest
 from beets import dbcore
 from tempfile import mkstemp
 
@@ -127,7 +127,7 @@ class TestModelWithGetters(dbcore.Model):
         return {}
 
 
-@_common.slow_test()
+@test.slow_test()
 class MigrationTest(unittest.TestCase):
     """Tests the ability to change the database schema between
     versions.
