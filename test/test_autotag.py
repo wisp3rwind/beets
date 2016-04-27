@@ -20,8 +20,8 @@ from __future__ import division, absolute_import, print_function
 import re
 import copy
 
-from test import _common
-from test._common import unittest
+import test
+from test import unittest
 from beets import autotag
 from beets.autotag import match
 from beets.autotag.hooks import Distance, string_dist
@@ -31,7 +31,7 @@ from beets.autotag import AlbumInfo, TrackInfo
 from beets import config
 
 
-class PluralityTest(_common.TestCase):
+class PluralityTest(unittest.TestCase):
     def test_plurality_consensus(self):
         objs = [1, 1, 1, 1]
         obj, freq = plurality(objs)
@@ -94,6 +94,7 @@ class PluralityTest(_common.TestCase):
             self.assertEqual(likelies[f], '%s_1' % f)
 
 
+# TODO: probably discard these in favor of test.TestCase methods?
 def _make_item(title, track, artist=u'some artist'):
     return Item(title=title, track=track,
                 artist=artist, album=u'some album',
@@ -116,7 +117,7 @@ def _clear_weights():
     Distance.__dict__['_weights'].computed = False
 
 
-class DistanceTest(_common.TestCase):
+class DistanceTest(test.TestCase):
     def tearDown(self):
         super(DistanceTest, self).tearDown()
         _clear_weights()
@@ -298,7 +299,7 @@ class DistanceTest(_common.TestCase):
                                             'media': [1.0, 0.05]})
 
 
-class TrackDistanceTest(_common.TestCase):
+class TrackDistanceTest(test.TestCase):
     def test_identical_tracks(self):
         item = _make_item(u'one', 1)
         info = _make_trackinfo()[0]
@@ -326,15 +327,9 @@ class TrackDistanceTest(_common.TestCase):
         self.assertEqual(dist, 0.0)
 
 
-class AlbumDistanceTest(_common.TestCase):
-    def _mapping(self, items, info):
-        out = {}
-        for i, t in zip(items, info.tracks):
-            out[i] = t
-        return out
-
+class AlbumDistanceTest(test.TestCase):
     def _dist(self, items, info):
-        return match.distance(items, info, self._mapping(items, info))
+        return match.distance(items, info, dict(zip(items, info.tracks)))
 
     def test_identical_albums(self):
         items = []
@@ -618,14 +613,11 @@ class AssignmentTest(unittest.TestCase):
 class ApplyTestUtil(object):
     def _apply(self, info=None, per_disc_numbering=False):
         info = info or self.info
-        mapping = {}
-        for i, t in zip(self.items, info.tracks):
-            mapping[i] = t
         config['per_disc_numbering'] = per_disc_numbering
-        autotag.apply_metadata(info, mapping)
+        autotag.apply_metadata(info, dict(zip(self.items, info.tracks)))
 
 
-class ApplyTest(_common.TestCase, ApplyTestUtil):
+class ApplyTest(test.TestCase, ApplyTestUtil):
     def setUp(self):
         super(ApplyTest, self).setUp()
 
@@ -797,7 +789,7 @@ class ApplyTest(_common.TestCase, ApplyTestUtil):
         self.assertEqual(self.items[0].data_source, 'MusicBrainz')
 
 
-class ApplyCompilationTest(_common.TestCase, ApplyTestUtil):
+class ApplyCompilationTest(test.TestCase, ApplyTestUtil):
     def setUp(self):
         super(ApplyCompilationTest, self).setUp()
 
@@ -935,7 +927,7 @@ class StringDistanceTest(unittest.TestCase):
         self.assertEqual(dist, 0.0)
 
 
-class EnumTest(_common.TestCase):
+class EnumTest(unittest.TestCase):
     """
     Test Enum Subclasses defined in beets.util.enumeration
     """
