@@ -18,6 +18,7 @@
 # ensure everything gets cleaned up automatically
 # purge redundant temp_dir code from tests
 # check IO-mocking code in tests
+# patch the config to give error on any accesses not through test.TestCase
 
 
 """This module includes various helpers that provide fixtures, capture
@@ -108,7 +109,7 @@ def Timecop():
         return now
 
     def sleep(amount):
-        now += amount
+        now += amount  # noqa
 
     time.time, time.sleep = time, sleep
     yield
@@ -377,13 +378,14 @@ class TestCase(unittest.TestCase):
         self._mediafile_fixtures = []
 
         beets.config['plugins'] = []
+        self._loaded_plugins = []
+
         beets.config['verbose'] = 1
         # beets.config['ui']['color'] = False
         # beets.config['threaded'] = False
 
         # load test-specific config supplied by the wrapper if it is supposed
-        # to run here. This is useful have different configurations per
-        # testcase, but still load plugins in setUp()
+        # to run here.
         func = getattr(self, self._testMethodName)
         if hasattr(func, '__beets_config') and \
                 func.__beets_config_before_setup:
@@ -396,8 +398,6 @@ class TestCase(unittest.TestCase):
         os.environ['BEETSDIR'] = self.temp_dir
         self._old_home = os.environ.get('HOME')
         os.environ['HOME'] = self.temp_dir
-
-        self._loaded_plugins = []
 
     def tearDown(self):
         if self._loaded_plugins:
@@ -457,6 +457,12 @@ class TestCase(unittest.TestCase):
             - anything set per config.add() will be shadowed by all of the
               above methods
         """
+
+        # This functionality was just an idea, and it is not clear whether its
+        # usage should be encouraged. After all, the effects on config
+        # shadowing might be non-obvious at first.
+        raise NotImplementedError()
+
         func.__beets_config = config
         func.__beets_config_before_setup = before_setup
 
@@ -468,7 +474,6 @@ class TestCase(unittest.TestCase):
 
         return apply_config
 
-    # TODO: make this usable both from setUp() and as a contextmanager
     def load_plugins(self, *plugins):
         """Load and initialize plugins by names.
         Similar to setting a list of plugins in the configuration. Will
@@ -605,10 +610,12 @@ class TestCase(unittest.TestCase):
         # TODO: check whether more default values should be added
         # (or whether this function should be dropped instead)
         values_ = {
-            'albumartist': u't\u00eftle {0}',
-            'album': u'the \u00e4lbum',
+            'albumartist': u'album\u00e4rtist',
+            'album': u'the \u00e4lbum {1}',
         }
         values_.update(values)
+        item_count = self._get_item_count()
+        values_['album'] = values_['album'].format(item_count)
         album = Album(**values_)
         return album
 
@@ -643,8 +650,7 @@ class TestCase(unittest.TestCase):
         return path
 
     def _get_item_count(self):
-        if not hasattr(self, '__item_count'):
-            count = 0
+        count = getattr(self, '__item_count', 0)
         self.__item_count = count + 1
         return count
 
@@ -754,6 +760,7 @@ class LibTestCase(TestCase):
         return item
 
     def add_album(self, item_count, album_fields={}, item_fields={}):
+        # TODO: Should this use self.create_album() ?
         items = [self.add_item(item_fields) for i in range(item_count)]
         album = self.lib.add_album(items)
         album.update(album_fields)
@@ -762,7 +769,7 @@ class LibTestCase(TestCase):
     def add_item_fixtures(self, ext='mp3', count=1):
         """Add a number of items with files to the database.
         """
-        # TODO base this on `add_item()`
+        # TODO base this on `add_item_fixture()`
         items = []
         path = os.path.join(RSRC, 'full.' + ext)
         for i in range(count):
