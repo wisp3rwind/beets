@@ -5,25 +5,22 @@ from __future__ import division, absolute_import, print_function
 import os
 import yaml
 from mock import patch
-from tempfile import mkdtemp
-from shutil import rmtree
 
 from beets import ui
 from beets import config
 
-from test._common import unittest
-from test.helper import TestHelper, capture_stdout
-from beets.library import Library
+import test
+from test import unittest
 
 
-class ConfigCommandTest(unittest.TestCase, TestHelper):
+class ConfigCommandTest(test.TestCase):
 
     def setUp(self):
-        self.temp_dir = mkdtemp()
+        super(ConfigCommandTest, self).setUp()
         if 'EDITOR' in os.environ:
+            self.editor = os.environ['EDITOR']
             del os.environ['EDITOR']
 
-        os.environ['BEETSDIR'] = self.temp_dir
         self.config_path = os.path.join(self.temp_dir, 'config.yaml')
         with open(self.config_path, 'w') as file:
             file.write('library: lib\n')
@@ -39,57 +36,54 @@ class ConfigCommandTest(unittest.TestCase, TestHelper):
         config._materialized = False
 
     def tearDown(self):
-        rmtree(self.temp_dir)
+        super(ConfigCommandTest, self).tearDown()
+        if hasattr(self, 'editor'):
+            os.environ['EDITOR'] = self.editor
 
     def test_show_user_config(self):
-        with capture_stdout() as output:
-            self.run_command('config', '-c')
-        output = yaml.load(output.getvalue())
+        output = self.run_with_output('config', '-c')
+        output = yaml.load(output)
         self.assertEqual(output['option'], 'value')
         self.assertEqual(output['password'], 'password_value')
 
     def test_show_user_config_with_defaults(self):
-        with capture_stdout() as output:
-            self.run_command('config', '-dc')
-        output = yaml.load(output.getvalue())
+        output = self.run_with_output('config', '-dc')
+        output = yaml.load(output)
         self.assertEqual(output['option'], 'value')
         self.assertEqual(output['password'], 'password_value')
         self.assertEqual(output['library'], 'lib')
         self.assertEqual(output['import']['timid'], False)
 
     def test_show_user_config_with_cli(self):
-        with capture_stdout() as output:
-            self.run_command('--config', self.cli_config_path, 'config')
-        output = yaml.load(output.getvalue())
+        output = self.run_with_output(
+            '--config', self.cli_config_path, 'config')
+        output = yaml.load(output)
         self.assertEqual(output['library'], 'lib')
         self.assertEqual(output['option'], 'cli overwrite')
 
     def test_show_redacted_user_config(self):
-        with capture_stdout() as output:
-            self.run_command('config')
-        output = yaml.load(output.getvalue())
+        output = self.run_with_output('config')
+        output = yaml.load(output)
         self.assertEqual(output['option'], 'value')
         self.assertEqual(output['password'], 'REDACTED')
 
     def test_show_redacted_user_config_with_defaults(self):
-        with capture_stdout() as output:
-            self.run_command('config', '-d')
-        output = yaml.load(output.getvalue())
+        output = self.run_with_output('config', '-d')
+        output = yaml.load(output)
         self.assertEqual(output['option'], 'value')
         self.assertEqual(output['password'], 'REDACTED')
         self.assertEqual(output['import']['timid'], False)
 
     def test_config_paths(self):
-        with capture_stdout() as output:
-            self.run_command('config', '-p')
-        paths = output.getvalue().split('\n')
+        output = self.run_with_output('config', '-p')
+        paths = output.split('\n')
         self.assertEqual(len(paths), 2)
         self.assertEqual(paths[0], self.config_path)
 
     def test_config_paths_with_cli(self):
-        with capture_stdout() as output:
-            self.run_command('--config', self.cli_config_path, 'config', '-p')
-        paths = output.getvalue().split('\n')
+        output = self.run_with_output(
+            '--config', self.cli_config_path, 'config', '-p')
+        paths = output.split('\n')
         self.assertEqual(len(paths), 3)
         self.assertEqual(paths[0], self.cli_config_path)
 
@@ -118,11 +112,10 @@ class ConfigCommandTest(unittest.TestCase, TestHelper):
         self.assertIn('here is problem', unicode(user_error.exception))
 
     def test_edit_invalid_config_file(self):
-        self.lib = Library(':memory:')
         with open(self.config_path, 'w') as file:
             file.write('invalid: [')
-        config.clear()
-        config._materialized = False
+        # config.clear()
+        # config._materialized = False
 
         os.environ['EDITOR'] = 'myeditor'
         with patch('os.execlp') as execlp:
