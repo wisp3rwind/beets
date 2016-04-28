@@ -9,14 +9,14 @@ import logging as log
 from StringIO import StringIO
 
 import beets.logging as blog
-from beets import plugins, ui
+from beets import plugins, ui, config
 import beetsplug
-from test import _common
-from test._common import unittest, TestCase
-from test import helper
+
+import test
+from test import unittest, capture_log
 
 
-class LoggingTest(TestCase):
+class LoggingTest(test.TestCase):
     def test_logging_management(self):
         l1 = log.getLogger("foo123")
         l2 = blog.getLogger("foo123")
@@ -48,8 +48,10 @@ class LoggingTest(TestCase):
         handler.flush()
         self.assertTrue(stream.getvalue(), u"foo oof baz")
 
+        l.removeHandler(handler)
 
-class LoggingLevelTest(unittest.TestCase, helper.TestHelper):
+
+class LoggingLevelTest(test.LibTestCase):
     class DummyModule(object):
         class DummyPlugin(plugins.BeetsPlugin):
             def __init__(self):
@@ -76,68 +78,68 @@ class LoggingLevelTest(unittest.TestCase, helper.TestHelper):
     def setUp(self):
         sys.modules['beetsplug.dummy'] = self.DummyModule
         beetsplug.dummy = self.DummyModule
-        self.setup_beets()
+        super(LoggingLevelTest, self).setUp()
+        print("get_item", self.lib.get_item(0))
         self.load_plugins('dummy')
 
     def tearDown(self):
-        self.unload_plugins()
-        self.teardown_beets()
+        super(LoggingLevelTest, self).tearDown()
         del beetsplug.dummy
         sys.modules.pop('beetsplug.dummy')
         self.DummyModule.DummyPlugin.listeners = None
         self.DummyModule.DummyPlugin._raw_listeners = None
 
     def test_command_level0(self):
-        self.config['verbose'] = 0
-        with helper.capture_log() as logs:
+        config['verbose'] = 0
+        with capture_log() as logs:
             self.run_command('dummy')
         self.assertIn(u'dummy: warning cmd', logs)
         self.assertIn(u'dummy: info cmd', logs)
         self.assertNotIn(u'dummy: debug cmd', logs)
 
     def test_command_level1(self):
-        self.config['verbose'] = 1
-        with helper.capture_log() as logs:
+        config['verbose'] = 1
+        with capture_log() as logs:
             self.run_command('dummy')
         self.assertIn(u'dummy: warning cmd', logs)
         self.assertIn(u'dummy: info cmd', logs)
         self.assertIn(u'dummy: debug cmd', logs)
 
     def test_command_level2(self):
-        self.config['verbose'] = 2
-        with helper.capture_log() as logs:
+        config['verbose'] = 2
+        with capture_log() as logs:
             self.run_command('dummy')
         self.assertIn(u'dummy: warning cmd', logs)
         self.assertIn(u'dummy: info cmd', logs)
         self.assertIn(u'dummy: debug cmd', logs)
 
     def test_listener_level0(self):
-        self.config['verbose'] = 0
-        with helper.capture_log() as logs:
+        config['verbose'] = 0
+        with capture_log() as logs:
             plugins.send('dummy_event')
         self.assertIn(u'dummy: warning listener', logs)
         self.assertNotIn(u'dummy: info listener', logs)
         self.assertNotIn(u'dummy: debug listener', logs)
 
     def test_listener_level1(self):
-        self.config['verbose'] = 1
-        with helper.capture_log() as logs:
+        config['verbose'] = 1
+        with capture_log() as logs:
             plugins.send('dummy_event')
         self.assertIn(u'dummy: warning listener', logs)
         self.assertIn(u'dummy: info listener', logs)
         self.assertNotIn(u'dummy: debug listener', logs)
 
     def test_listener_level2(self):
-        self.config['verbose'] = 2
-        with helper.capture_log() as logs:
+        config['verbose'] = 2
+        with capture_log() as logs:
             plugins.send('dummy_event')
         self.assertIn(u'dummy: warning listener', logs)
         self.assertIn(u'dummy: info listener', logs)
         self.assertIn(u'dummy: debug listener', logs)
 
     def test_import_stage_level0(self):
-        self.config['verbose'] = 0
-        with helper.capture_log() as logs:
+        config['verbose'] = 0
+        with capture_log() as logs:
             importer = self.create_importer()
             importer.run()
         self.assertIn(u'dummy: warning import_stage', logs)
@@ -145,8 +147,8 @@ class LoggingLevelTest(unittest.TestCase, helper.TestHelper):
         self.assertNotIn(u'dummy: debug import_stage', logs)
 
     def test_import_stage_level1(self):
-        self.config['verbose'] = 1
-        with helper.capture_log() as logs:
+        config['verbose'] = 1
+        with capture_log() as logs:
             importer = self.create_importer()
             importer.run()
         self.assertIn(u'dummy: warning import_stage', logs)
@@ -154,8 +156,8 @@ class LoggingLevelTest(unittest.TestCase, helper.TestHelper):
         self.assertNotIn(u'dummy: debug import_stage', logs)
 
     def test_import_stage_level2(self):
-        self.config['verbose'] = 2
-        with helper.capture_log() as logs:
+        config['verbose'] = 2
+        with capture_log() as logs:
             importer = self.create_importer()
             importer.run()
         self.assertIn(u'dummy: warning import_stage', logs)
@@ -163,8 +165,8 @@ class LoggingLevelTest(unittest.TestCase, helper.TestHelper):
         self.assertIn(u'dummy: debug import_stage', logs)
 
 
-@_common.slow_test()
-class ConcurrentEventsTest(TestCase, helper.TestHelper):
+@test.slow_test()
+class ConcurrentEventsTest(test.LibTestCase):
     """Similar to LoggingLevelTest but lower-level and focused on multiple
     events interaction. Since this is a bit heavy we don't do it in
     LoggingLevelTest.
@@ -208,10 +210,7 @@ class ConcurrentEventsTest(TestCase, helper.TestHelper):
                 self.exc_info = sys.exc_info()
 
     def setUp(self):
-        self.setup_beets(disk=True)
-
-    def tearDown(self):
-        self.teardown_beets()
+        super(ConcurrentEventsTest, self).setUp(disk=True)
 
     def test_concurrent_events(self):
         dp = self.DummyPlugin(self)
@@ -225,7 +224,7 @@ class ConcurrentEventsTest(TestCase, helper.TestHelper):
             dp.lock2.acquire()
             self.assertEqual(dp._log.level, log.NOTSET)
 
-            self.config['verbose'] = 1
+            config['verbose'] = 1
             t1 = threading.Thread(target=dp.listeners['dummy_event1'][0])
             t1.start()  # blocked. t1 tested its log level
             while dp.t1_step != 1:
@@ -233,7 +232,7 @@ class ConcurrentEventsTest(TestCase, helper.TestHelper):
             self.assertTrue(t1.is_alive())
             self.assertEqual(dp._log.level, log.NOTSET)
 
-            self.config['verbose'] = 2
+            config['verbose'] = 2
             t2 = threading.Thread(target=dp.listeners['dummy_event2'][0])
             t2.start()  # blocked. t2 tested its log level
             while dp.t2_step != 1:
@@ -269,16 +268,16 @@ class ConcurrentEventsTest(TestCase, helper.TestHelper):
     def test_root_logger_levels(self):
         """Root logger level should be shared between threads.
         """
-        self.config['threaded'] = True
+        config['threaded'] = True
 
         blog.getLogger('beets').set_global_level(blog.WARNING)
-        with helper.capture_log() as logs:
+        with capture_log() as logs:
             importer = self.create_importer()
             importer.run()
         self.assertEqual(logs, [])
 
         blog.getLogger('beets').set_global_level(blog.INFO)
-        with helper.capture_log() as logs:
+        with capture_log() as logs:
             importer = self.create_importer()
             importer.run()
         for l in logs:
@@ -286,7 +285,7 @@ class ConcurrentEventsTest(TestCase, helper.TestHelper):
             self.assertIn(u"album", l)
 
         blog.getLogger('beets').set_global_level(blog.DEBUG)
-        with helper.capture_log() as logs:
+        with capture_log() as logs:
             importer = self.create_importer()
             importer.run()
         self.assertIn(u"Sending event: database_change", logs)
