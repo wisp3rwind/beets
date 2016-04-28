@@ -19,27 +19,23 @@ from __future__ import division, absolute_import, print_function
 import os.path
 from mock import Mock, patch
 
-from test._common import unittest, RSRC
-from test.helper import TestHelper
+import test
+from test import unittest, RSRC
 
 from beets.library import Item
 
 
-class EchonestCliTest(unittest.TestCase, TestHelper):
+class EchonestCliTest(test.LibTestCase):
     def setUp(self):
         try:
-            __import__('pyechonest')
+            import pyechonest
         except ImportError:
             self.skipTest(u'pyechonest not available')
 
-        self.setup_beets()
+        super(EchonestCliTest, self).setUp()
         self.load_plugins('echonest')
         # Prevent 'beet echonest' from writing files
         self.config['import']['write'] = False
-
-    def tearDown(self):
-        self.teardown_beets()
-        self.unload_plugins()
 
     @patch.object(Item, 'write')
     @patch('pyechonest.song.profile')
@@ -77,6 +73,7 @@ class EchonestCliTest(unittest.TestCase, TestHelper):
     @patch('pyechonest.song.search')
     @patch('pyechonest.track.track_from_filename')
     def test_analyze(self, echonest_track, echonest_search, echonest_profile):
+        # TODO: use add_item_fixture
         item = self.add_item(title='title', length=10,
                              path=os.path.join(RSRC, 'min.mp3'))
         echonest_search.return_value = []
@@ -96,6 +93,7 @@ class EchonestCliTest(unittest.TestCase, TestHelper):
     @patch('beetsplug.echonest.CONVERT_COMMAND', 'cp $source $dest')
     def test_analyze_convert(self, echonest_track, echonest_search,
                              echonest_profile):
+        # TODO: use add_item_fixture
         item = self.add_item(title='title', length=10, format='FLAC',
                              path=os.path.join(RSRC, 'min.flac'))
         echonest_search.return_value = []
@@ -121,6 +119,7 @@ class EchonestCliTest(unittest.TestCase, TestHelper):
     @patch('beetsplug.echonest.CONVERT_COMMAND', 'false')
     def test_analyze_convert_fail(self, echonest_track, echonest_search,
                                   echonest_profile):
+        # TODO: use add_item_fixture
         item = self.add_item(title='title', length=10, format='FLAC',
                              path=os.path.join(RSRC, 'min.flac'))
         echonest_search.return_value = []
@@ -140,6 +139,7 @@ class EchonestCliTest(unittest.TestCase, TestHelper):
     @patch('beetsplug.echonest.TRUNCATE_COMMAND', 'cp $source $dest')
     def test_analyze_truncate(self, echonest_track, echonest_search,
                               echonest_profile):
+        # TODO: use add_item_fixture
         item = self.add_item(title='title', length=10, format='MP3',
                              path=os.path.join(RSRC, 'min.mp3'))
         echonest_search.return_value = []
@@ -154,8 +154,7 @@ class EchonestCliTest(unittest.TestCase, TestHelper):
                             echonest_track.call_args[1]['filename'])
 
     def test_custom_field_range_query(self):
-        item = Item(liveness=2.2)
-        item.add(self.lib)
+        self.add_item(liveness=2.2)
         item = self.lib.items(u'liveness:2.2..3').get()
         self.assertEqual(item['liveness'], 2.2)
 
