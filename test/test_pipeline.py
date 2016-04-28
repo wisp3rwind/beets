@@ -17,7 +17,7 @@
 """
 from __future__ import division, absolute_import, print_function
 
-from test._common import unittest
+from test import unittest
 from beets.util import pipeline
 
 
