@@ -53,6 +53,7 @@ from enum import Enum
 from functools import wraps
 from StringIO import StringIO
 from tempfile import mkdtemp, mkstemp
+import sqlite3
 
 # Use unittest2 on Python < 2.7.
 try:
@@ -677,7 +678,27 @@ class LibTestCase(TestCase):
             os.mkdir(self.libdir)
             dbpath = beets.config['library'].as_filename()
         else:
-            dbpath = ':memory:'
+            # NOTE: The uri parameter to sqlite.connect() was only introduced
+            # in Python 3.4. Without uri=True, connect() will not interpret
+            # dpath correctly though, but actually create a file
+            # named 'file::memory?cache=shared'
+            if True or sqlite3.sqlite_version_info < (3, 5, 0):
+                """ sqlite gained support for shared cache in 3.3.0, but only
+                    since 3.5.0 can it be shared across threads (not across
+                    processes, though).
+                    When the cache is not shared, each connection will actually
+                    create a new in-memory database. Beets creates one
+                    connection per thread, thus this will break operation
+                    (mostly the importer) whenever something runs in
+                    parallel (i.e. usually through beets.util.pipeline).
+                    See
+                        http://www.sqlite.org/inmemorydb.html
+                        http://www.sqlite.org/sharedcache.html
+                """
+                dbpath = ':memory:'
+                beets.config['threaded'] = False
+            else:
+                dbpath = 'file::memory:?cache=shared'
         self.lib = Library(dbpath, self.libdir)
         # self.i = self.add_item()
 
