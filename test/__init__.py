@@ -666,7 +666,13 @@ class TestCase(unittest.TestCase, Assertions):
     # Running beets commands
 
     def run_command(self, *args):
-        beets.ui._raw_main(list(args), self.lib)
+        if hasattr(self, 'lib'):
+            beets.ui._raw_main(list(args), self.lib)
+        elif 'config' in args:
+            beets.ui._raw_main(list(args))
+        else:
+            raise RuntimeError(u'Only the config command may be run '
+                               u'without a library!')
 
     def run_with_output(self, *args):
         with capture_stdout() as out:
@@ -737,9 +743,9 @@ class LibTestCase(TestCase):
             track_no = 0
             album_item_count = item_count
             while album_item_count:
+                title = u'track {0}'.format(track_no)
                 src = os.path.join(RSRC, b'full.mp3')
-                title_file = util.bytestring_path(u'track {0}.mp3'
-                                                  .format(track_no))
+                title_file = util.bytestring_path('{0}.mp3'.format(title))
                 dest = os.path.join(album_dir, title_file)
                 if os.path.exists(dest):
                     track_no += 1
