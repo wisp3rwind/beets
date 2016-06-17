@@ -16,23 +16,19 @@
 from __future__ import division, absolute_import, print_function
 
 import os
-from test._common import unittest
-from test.helper import TestHelper
-from beets import util
+import test
+from test import unittest
+from beets import config, util
 
 
-class FetchartCliTest(unittest.TestCase, TestHelper):
+class FetchartCliTest(test.LibTestCase):
 
     def setUp(self):
-        self.setup_beets()
+        super(FetchartCliTest, self).setUp()
         self.load_plugins('fetchart')
-        self.config['fetchart']['cover_names'] = 'c\xc3\xb6ver.jpg'
-        self.config['art_filename'] = 'mycover'
+        config['fetchart']['cover_names'] = 'c\xc3\xb6ver.jpg'
+        config['art_filename'] = 'mycover'
         self.album = self.add_album()
-
-    def tearDown(self):
-        self.unload_plugins()
-        self.teardown_beets()
 
     def test_set_art_from_folder(self):
         self.touch(b'c\xc3\xb6ver.jpg', dir=self.album.path, content='IMAGE')
