@@ -85,7 +85,7 @@ def _print_keys(query):
     returned row, with identation of 2 spaces.
     """
     for row in query:
-        print_(' ' * 2 + row[b'key'])
+        print_(' ' * 2 + row['key'])
 
 
 def fields_func(lib, opts, args):
@@ -279,8 +279,8 @@ def show_change(cur_artist, cur_album, match):
     print_(' '.join(info))
 
     # Tracks.
-    pairs = match.mapping.items()
-    pairs.sort(key=lambda (_, track_info): track_info.index)
+    pairs = list(match.mapping.items())
+    pairs.sort(key=lambda item_and_track_info: item_and_track_info[1].index)
 
     # Build up LHS and RHS for track difference display. The `lines` list
     # contains ``(lhs, rhs, width)`` tuples where `width` is the length (in
@@ -441,8 +441,10 @@ def summarize_items(items, singleton):
         summary_parts.append(items[0].format)
     else:
         # Enumerate all the formats by decreasing frequencies:
-        for fmt, count in sorted(format_counts.items(),
-                                 key=lambda (f, c): (-c, f)):
+        for fmt, count in sorted(
+            format_counts.items(),
+            key=lambda fmt_and_count: (-fmt_and_count[1], fmt_and_count[0])
+        ):
             summary_parts.append('{0} {1}'.format(fmt, count))
 
     if items:
@@ -752,7 +754,7 @@ class TerminalImportSession(importer.ImportSession):
                     _, _, candidates, rec = autotag.tag_album(
                         task.items, search_ids=search_id.split()
                     )
-            elif choice in extra_ops.keys():
+            elif choice in list(extra_ops.keys()):
                 # Allow extra ops to automatically set the post-choice.
                 post_choice = extra_ops[choice](self, task)
                 if isinstance(post_choice, importer.action):
@@ -1192,31 +1194,33 @@ default_commands.append(update_cmd)
 
 # remove: Remove items from library, delete files.
 
-def remove_items(lib, query, album, delete):
+def remove_items(lib, query, album, delete, force):
     """Remove items matching query from lib. If album, then match and
     remove whole albums. If delete, also remove files from disk.
     """
     # Get the matching items.
     items, albums = _do_query(lib, query, album)
 
-    # Prepare confirmation with user.
-    print_()
-    if delete:
-        fmt = u'$path - $title'
-        prompt = u'Really DELETE %i file%s (y/n)?' % \
-                 (len(items), 's' if len(items) > 1 else '')
-    else:
-        fmt = ''
-        prompt = u'Really remove %i item%s from the library (y/n)?' % \
-                 (len(items), 's' if len(items) > 1 else '')
+    # Confirm file removal if not forcing removal.
+    if not force:
+        # Prepare confirmation with user.
+        print_()
+        if delete:
+            fmt = u'$path - $title'
+            prompt = u'Really DELETE %i file%s (y/n)?' % \
+                     (len(items), 's' if len(items) > 1 else '')
+        else:
+            fmt = ''
+            prompt = u'Really remove %i item%s from the library (y/n)?' % \
+                     (len(items), 's' if len(items) > 1 else '')
 
-    # Show all the items.
-    for item in items:
-        ui.print_(format(item, fmt))
+        # Show all the items.
+        for item in items:
+            ui.print_(format(item, fmt))
 
-    # Confirm with user.
-    if not ui.input_yn(prompt, True):
-        return
+        # Confirm with user.
+        if not ui.input_yn(prompt, True):
+            return
 
     # Remove (and possibly delete) items.
     with lib.transaction():
@@ -1225,7 +1229,7 @@ def remove_items(lib, query, album, delete):
 
 
 def remove_func(lib, opts, args):
-    remove_items(lib, decargs(args), opts.album, opts.delete)
+    remove_items(lib, decargs(args), opts.album, opts.delete, opts.force)
 
 
 remove_cmd = ui.Subcommand(
@@ -1234,6 +1238,10 @@ remove_cmd = ui.Subcommand(
 remove_cmd.parser.add_option(
     u"-d", u"--delete", action="store_true",
     help=u"also remove files from disk"
+)
+remove_cmd.parser.add_option(
+    u"-f", u"--force", action="store_true",
+    help=u"do not ask when removing items"
 )
 remove_cmd.parser.add_album_option()
 remove_cmd.func = remove_func
@@ -1661,9 +1669,11 @@ def print_completion(*args):
 BASH_COMPLETION_PATHS = map(syspath, [
     u'/etc/bash_completion',
     u'/usr/share/bash-completion/bash_completion',
-    u'/usr/share/local/bash-completion/bash_completion',
-    u'/opt/local/share/bash-completion/bash_completion',  # SmartOS
-    u'/usr/local/etc/bash_completion',  # Homebrew
+    u'/usr/local/share/bash-completion/bash_completion',
+    # SmartOS
+    u'/opt/local/share/bash-completion/bash_completion',
+    # Homebrew (before bash-completion2)
+    u'/usr/local/etc/bash_completion',
 ])
 
 
@@ -1728,7 +1738,10 @@ def completion_script(commands):
 
     # Fields
     yield u"  fields='%s'\n" % ' '.join(
-        set(library.Item._fields.keys() + library.Album._fields.keys())
+        set(
+            list(library.Item._fields.keys()) +
+            list(library.Album._fields.keys())
+        )
     )
 
     # Command options

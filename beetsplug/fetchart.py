@@ -31,6 +31,7 @@ from beets import util
 from beets import config
 from beets.util.artresizer import ArtResizer
 from beets.util import confit
+from beets.util import syspath, bytestring_path
 
 try:
     import itunes
@@ -165,9 +166,9 @@ def _logged_get(log, *args, **kwargs):
     else:
         message = 'getting URL'
 
-    req = requests.Request(b'GET', *args, **req_kwargs)
+    req = requests.Request('GET', *args, **req_kwargs)
     with requests.Session() as s:
-        s.headers = {b'User-Agent': b'beets'}
+        s.headers = {'User-Agent': 'beets'}
         prepped = s.prepare_request(req)
         log.debug('{}: {}', message, prepped.url)
         return s.send(prepped, **send_kwargs)
@@ -242,7 +243,7 @@ class RemoteArtSource(ArtSource):
                         fh.write(chunk)
                 self._log.debug(u'downloaded art to: {0}',
                                 util.displayable_path(fh.name))
-                candidate.path = fh.name
+                candidate.path = util.bytestring_path(fh.name)
                 return
 
         except (IOError, requests.RequestException, TypeError) as exc:
@@ -454,7 +455,7 @@ class Wikipedia(RemoteArtSource):
     NAME = u"Wikipedia (queried through DBpedia)"
     DBPEDIA_URL = 'http://dbpedia.org/sparql'
     WIKIPEDIA_URL = 'http://en.wikipedia.org/w/api.php'
-    SPARQL_QUERY = '''PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+    SPARQL_QUERY = u'''PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
                  PREFIX dbpprop: <http://dbpedia.org/property/>
                  PREFIX owl: <http://dbpedia.org/ontology/>
                  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
@@ -594,20 +595,22 @@ class FileSystem(LocalArtSource):
         paths = extra['paths']
         if not paths:
             return
-        cover_names = extra['cover_names']
-        cover_pat = br"(\b|_)({0})(\b|_)".format(b'|'.join(cover_names))
+        cover_names = list(map(util.bytestring_path, extra['cover_names']))
+        cover_names_str = b'|'.join(cover_names)
+        cover_pat = br''.join([br"(\b|_)(", cover_names_str, br")(\b|_)"])
         cautious = extra['cautious']
 
         for path in paths:
-            if not os.path.isdir(path):
+            if not os.path.isdir(syspath(path)):
                 continue
 
             # Find all files that look like images in the directory.
             images = []
-            for fn in os.listdir(path):
+            for fn in os.listdir(syspath(path)):
+                fn = bytestring_path(fn)
                 for ext in IMAGE_EXTENSIONS:
                     if fn.lower().endswith(b'.' + ext.encode('utf8')) and \
-                       os.path.isfile(os.path.join(path, fn)):
+                       os.path.isfile(syspath(os.path.join(path, fn))):
                         images.append(fn)
 
             # Look for "preferred" filenames.
@@ -702,7 +705,7 @@ class FetchArtPlugin(plugins.BeetsPlugin, RequestMixin):
             self.enforce_ratio = True
 
         cover_names = self.config['cover_names'].as_str_seq()
-        self.cover_names = map(util.bytestring_path, cover_names)
+        self.cover_names = list(map(util.bytestring_path, cover_names))
         self.cautious = self.config['cautious'].get(bool)
         self.store_source = self.config['store_source'].get(bool)
 

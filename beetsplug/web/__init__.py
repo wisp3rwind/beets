@@ -90,7 +90,7 @@ def resource(name):
                 )
             else:
                 return flask.abort(404)
-        responder.__name__ = b'get_%s' % name.encode('utf8')
+        responder.__name__ = 'get_{0}'.format(name)
         return responder
     return make_responder
 
@@ -104,7 +104,7 @@ def resource_query(name):
                 json_generator(query_func(queries), root='results'),
                 mimetype='application/json'
             )
-        responder.__name__ = b'query_%s' % name.encode('utf8')
+        responder.__name__ = 'query_{0}'.format(name)
         return responder
     return make_responder
 
@@ -119,9 +119,19 @@ def resource_list(name):
                 json_generator(list_all(), root=name),
                 mimetype='application/json'
             )
-        responder.__name__ = b'all_%s' % name.encode('utf8')
+        responder.__name__ = 'all_{0}'.format(name)
         return responder
     return make_responder
+
+
+def _get_unique_table_field_values(model, field, sort_field):
+    """ retrieve all unique values belonging to a key from a model """
+    if field not in model.all_keys() or sort_field not in model.all_keys():
+        raise KeyError
+    with g.lib.transaction() as tx:
+        rows = tx.query('SELECT DISTINCT "{0}" FROM "{1}" ORDER BY "{2}"'
+                        .format(field, model._table, sort_field))
+    return [row[0] for row in rows]
 
 
 class IdListConverter(BaseConverter):
@@ -194,6 +204,17 @@ def item_query(queries):
     return g.lib.items(queries)
 
 
+@app.route('/item/values/<string:key>')
+def item_unique_field_values(key):
+    sort_key = flask.request.args.get('sort_key', key)
+    try:
+        values = _get_unique_table_field_values(beets.library.Item, key,
+                                                sort_key)
+    except KeyError:
+        return flask.abort(404)
+    return flask.jsonify(values=values)
+
+
 # Albums.
 
 @app.route('/album/<idlist:ids>')
@@ -218,7 +239,21 @@ def album_query(queries):
 @app.route('/album/<int:album_id>/art')
 def album_art(album_id):
     album = g.lib.get_album(album_id)
-    return flask.send_file(album.artpath)
+    if album.artpath:
+        return flask.send_file(album.artpath)
+    else:
+        return flask.abort(404)
+
+
+@app.route('/album/values/<string:key>')
+def album_unique_field_values(key):
+    sort_key = flask.request.args.get('sort_key', key)
+    try:
+        values = _get_unique_table_field_values(beets.library.Album, key,
+                                                sort_key)
+    except KeyError:
+        return flask.abort(404)
+    return flask.jsonify(values=values)
 
 
 # Artists.

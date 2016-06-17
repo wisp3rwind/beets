@@ -17,6 +17,7 @@
 from __future__ import division, absolute_import, print_function
 
 from collections import namedtuple
+from functools import total_ordering
 import re
 
 from beets import logging
@@ -288,6 +289,7 @@ class LazyClassProperty(object):
         return self.value
 
 
+@total_ordering
 class Distance(object):
     """Keeps track of multiple distance penalties. Provides a single
     weighted distance for all penalties as well as a weighted distance
@@ -297,7 +299,7 @@ class Distance(object):
         self._penalties = {}
 
     @LazyClassProperty
-    def _weights(cls):
+    def _weights(cls):  # noqa
         """A dictionary from keys to floating-point weights.
         """
         weights_view = config['match']['distance_weights']
@@ -349,12 +351,21 @@ class Distance(object):
         # Convert distance into a negative float we can sort items in
         # ascending order (for keys, when the penalty is equal) and
         # still get the items with the biggest distance first.
-        return sorted(list_, key=lambda (key, dist): (0 - dist, key))
+        return sorted(
+            list_,
+            key=lambda key_and_dist: (-key_and_dist[1], key_and_dist[0])
+        )
+
+    def __hash__(self):
+        return id(self)
+
+    def __eq__(self, other):
+        return self.distance == other
 
     # Behave like a float.
 
-    def __cmp__(self, other):
-        return cmp(self.distance, other)
+    def __lt__(self, other):
+        return self.distance < other
 
     def __float__(self):
         return self.distance
@@ -539,7 +550,7 @@ def albums_for_id(album_id):
     for a in plugin_albums:
         plugins.send(u'albuminfo_received', info=a)
     candidates.extend(plugin_albums)
-    return filter(None, candidates)
+    return [a for a in candidates if a]
 
 
 def tracks_for_id(track_id):
@@ -549,7 +560,7 @@ def tracks_for_id(track_id):
     for t in plugin_tracks:
         plugins.send(u'trackinfo_received', info=t)
     candidates.extend(plugin_tracks)
-    return filter(None, candidates)
+    return [t for t in candidates if t]
 
 
 def album_candidates(items, artist, album, va_likely):

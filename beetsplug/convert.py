@@ -39,7 +39,7 @@ ALIASES = {
     u'vorbis': u'ogg',
 }
 
-LOSSLESS_FORMATS = ['ape', 'flac', 'alac', 'wav']
+LOSSLESS_FORMATS = ['ape', 'flac', 'alac', 'wav', 'aiff']
 
 
 def replace_ext(path, ext):
@@ -47,7 +47,8 @@ def replace_ext(path, ext):
 
     The new extension must not contain a leading dot.
     """
-    return os.path.splitext(path)[0] + b'.' + ext
+    ext_dot = util.bytestring_path('.' + ext)
+    return os.path.splitext(path)[0] + ext_dot
 
 
 def get_format(fmt=None):
@@ -60,10 +61,10 @@ def get_format(fmt=None):
     try:
         format_info = config['convert']['formats'][fmt].get(dict)
         command = format_info['command']
-        extension = format_info['extension']
+        extension = format_info.get('extension', fmt)
     except KeyError:
         raise ui.UserError(
-            u'convert: format {0} needs "command" and "extension" fields'
+            u'convert: format {0} needs the "command" field'
             .format(fmt)
         )
     except ConfigTypeError:
@@ -120,7 +121,7 @@ class ConvertPlugin(BeetsPlugin):
                 u'opus':
                     u'ffmpeg -i $source -y -vn -acodec libopus -ab 96k $dest',
                 u'ogg':
-                    u'ffmpeg -i $source -y -vn -acodec libvorbis -aq 2 $dest',
+                    u'ffmpeg -i $source -y -vn -acodec libvorbis -aq 3 $dest',
                 u'wma':
                     u'ffmpeg -i $source -y -vn -acodec wmav2 -vn $dest',
             },
@@ -185,12 +186,12 @@ class ConvertPlugin(BeetsPlugin):
         args = shlex.split(command)
         for i, arg in enumerate(args):
             args[i] = Template(arg).safe_substitute({
-                b'source': source,
-                b'dest': dest,
+                'source': source,
+                'dest': dest,
             })
 
         if pretend:
-            self._log.info(' '.join(ui.decargs(args)))
+            self._log.info(u' '.join(ui.decargs(args)))
             return
 
         try:
@@ -199,16 +200,17 @@ class ConvertPlugin(BeetsPlugin):
             # Something went wrong (probably Ctrl+C), remove temporary files
             self._log.info(u'Encoding {0} failed. Cleaning up...',
                            util.displayable_path(source))
-            self._log.debug(u'Command {0} exited with status {1}',
-                            exc.cmd.decode('utf8', 'ignore'),
-                            exc.returncode)
+            self._log.debug(u'Command {0} exited with status {1}: {2}',
+                            args,
+                            exc.returncode,
+                            exc.output)
             util.remove(dest)
             util.prune_dirs(os.path.dirname(dest))
             raise
         except OSError as exc:
             raise ui.UserError(
-                u"convert: could invoke '{0}': {1}".format(
-                    ' '.join(args), exc
+                u"convert: couldn't invoke '{0}': {1}".format(
+                    u' '.join(ui.decargs(args)), exc
                 )
             )
 
@@ -218,6 +220,9 @@ class ConvertPlugin(BeetsPlugin):
 
     def convert_item(self, dest_dir, keep_new, path_formats, fmt,
                      pretend=False):
+        """A pipeline thread that converts `Item` objects from a
+        library.
+        """
         command, ext = get_format(fmt)
         item, original, converted = None, None, None
         while True:

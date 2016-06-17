@@ -83,13 +83,27 @@ have multiple paths, format them as a YAML list like so::
         - /path/one
         - /path/two
 
+.. _ignore:
+
 ignore
 ~~~~~~
 
 A list of glob patterns specifying file and directory names to be ignored when
-importing. By default, this consists of ``.*``,  ``*~``, and ``System Volume
-Information`` (i.e., beets ignores Unix-style hidden files, backup files, and
-a directory that appears at the root of some Windows filesystems).
+importing. By default, this consists of ``.*``,  ``*~``,  ``System Volume
+Information``, ``lost+found`` (i.e., beets ignores Unix-style hidden files,
+backup files, and directories that appears at the root of some Linux and Windows
+filesystems).
+
+.. _ignore_hidden:
+
+ignore_hidden
+~~~~~~~~~~~~~
+
+Either ``yes`` or ``no``; whether to ignore hidden files when importing. On
+Windows, the "Hidden" property of files is used to detect whether or not a file
+is hidden. On OS X, the file's "IsHidden" flag is used to detect whether or not
+a file is hidden. On both OS X and other platforms (excluding Windows), files
+(and directories) starting with a dot are detected as hidden files.
 
 .. _replace:
 
@@ -268,7 +282,8 @@ terminal_encoding
 ~~~~~~~~~~~~~~~~~
 
 The text encoding, as `known to Python`_, to use for messages printed to the
-standard output. By default, this is determined automatically from the locale
+standard output. It's also used to read messages from the standard input.
+By default, this is determined automatically from the locale
 environment variables.
 
 .. _known to python: http://docs.python.org/2/library/codecs.html#standard-encodings
@@ -798,6 +813,7 @@ Here's an example file::
         timid: no
         log: beetslog.txt
     ignore: .AppleDouble ._* *~ .DS_Store
+    ignore_hidden: yes
     art_filename: albumart
     plugins: bpd
     pluginpath: ~/beets/myplugins

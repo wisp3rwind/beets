@@ -46,6 +46,7 @@ import sys
 import os
 import os.path
 import shutil
+import unittest
 import time
 import subprocess
 from contextlib import contextmanager
@@ -55,18 +56,12 @@ from StringIO import StringIO
 from tempfile import mkdtemp, mkstemp
 import sqlite3
 
-# Use unittest2 on Python < 2.7.
-try:
-    import unittest2 as unittest
-except ImportError:
-    import unittest
-
 # Mangle the search path to include the beets sources.
 sys.path.insert(0, '..')  # noqa
 import beets
 import beets.library
 import beets.plugins
-from beets import importer, logging
+from beets import importer, logging, util
 from beets.autotag.hooks import AlbumInfo, TrackInfo
 from beets.library import Library, Item, Album
 from beets.mediafile import MediaFile, Image
@@ -83,7 +78,8 @@ beetsplug.__path__ = [os.path.abspath(
 HAVE_SYMLINK = hasattr(os, 'symlink')
 
 # Test resources path.
-RSRC = os.path.join(os.path.dirname(__file__), b'rsrc')
+RSRC = util.bytestring_path(os.path.join(os.path.dirname(__file__), 'rsrc'))
+PLUGINPATH = os.path.join(os.path.dirname(__file__), 'rsrc', 'beetsplug')
 
 
 # Propagate to root loger so nosetest can capture it
@@ -332,7 +328,28 @@ def has_program(cmd, args=['--version']):
 # Extend TestCase
 
 
-class TestCase(unittest.TestCase):
+class Assertions(object):
+    """A mixin with additional unit test assertions."""
+
+    def assertExists(self, path):  # noqa
+        self.assertTrue(os.path.exists(util.syspath(path)),
+                        u'file does not exist: {!r}'.format(path))
+
+    def assertNotExists(self, path):  # noqa
+        self.assertFalse(os.path.exists(util.syspath(path)),
+                         u'file exists: {!r}'.format((path)))
+
+    def assert_equal_path(self, a, b):
+        """Check that two paths are equal."""
+        # The common case.
+        if a == b:
+            return
+
+        self.assertEqual(util.normpath(a), util.normpath(b),
+                         u'paths are not equal: {!r} and {!r}'.format(a, b))
+
+
+class TestCase(unittest.TestCase, Assertions):
     """A unittest.TestCase subclass that saves and restores beets'
     global configuration. This allows tests to make temporary
     modifications that will then be automatically removed when the test
@@ -371,9 +388,9 @@ class TestCase(unittest.TestCase):
         # TODO: how much time does this consume? should it be done more lazily?
         # How many tests actually need a temporary dir?
         self.temp_dir = mkdtemp()
-        beets.config['statefile'] = os.path.join(self.temp_dir, 'state.pickle')
-        beets.config['library'] = os.path.join(self.temp_dir, 'library.db')
-        self.libdir = os.path.join(self.temp_dir, 'libdir')
+        beets.config['statefile'] = os.path.join(self.temp_dir, b'state.pickle')
+        beets.config['library'] = os.path.join(self.temp_dir, b'library.db')
+        self.libdir = os.path.join(self.temp_dir, b'libdir')
         beets.config['directory'] = self.libdir
 
         self._mediafile_fixtures = []
@@ -494,16 +511,6 @@ class TestCase(unittest.TestCase):
         Item._types.update(beets.plugins.types(Item))
         Album._types.update(beets.plugins.types(Album))
 
-    # convenient assertions
-
-    def assertExists(self, path):
-        self.assertTrue(os.path.exists(path),
-                        u'file does not exist: {!r}'.format(path))
-
-    def assertNotExists(self, path):
-        self.assertFalse(os.path.exists(path),
-                         u'file exists: {!r}'.format((path)))
-
     # Safe file operations
 
     def touch(self, path, dir=None, content=''):
@@ -521,9 +528,9 @@ class TestCase(unittest.TestCase):
 
         parent = os.path.dirname(path)
         if not os.path.isdir(parent):
-            os.makedirs(parent)
+            os.makedirs(util.syspath(parent))
 
-        with open(path, 'a+') as f:
+        with open(util.syspath(path), 'a+') as f:
             f.write(content)
         return path
 
@@ -630,7 +637,7 @@ class TestCase(unittest.TestCase):
         specified extension a cover art image is added to the media
         file.
         """
-        src = os.path.join(RSRC, 'full.' + ext)
+        src = os.path.join(RSRC, util.bytestring_path('full.' + ext))
         handle, path = mkstemp()
         os.close(handle)
         shutil.copyfile(src, path)
@@ -640,7 +647,8 @@ class TestCase(unittest.TestCase):
             imgs = []
             for img_ext in images:
                 img_path = os.path.join(RSRC,
-                                        'image-2x3.{0}'.format(img_ext))
+                                        util.bytestring_path(
+                                            'image-2x3.{0}'.format(img_ext)))
                 with open(img_path, 'rb') as f:
                     imgs.append(Image(f.read()))
             mediafile.images = imgs
@@ -703,7 +711,7 @@ class LibTestCase(TestCase):
         # self.i = self.add_item()
 
     def tearDown(self):
-        self.lib._connection().close()
+        self.lib._close()
         super(LibTestCase, self).tearDown()
 
     def create_importer(self, item_count=1, album_count=1):
@@ -712,13 +720,13 @@ class LibTestCase(TestCase):
         Copies the specified number of files to a subdirectory of
         `self.temp_dir` and creates a `TestImportSession` for this path.
         """
-        import_dir = os.path.join(self.temp_dir, 'import')
+        import_dir = os.path.join(self.temp_dir, b'import')
         if not os.path.isdir(import_dir):
             os.mkdir(import_dir)
 
         album_no = 0
         while album_count:
-            album = u'album {0}'.format(album_no)
+            album = util.bytestring_path(u'album {0}'.format(album_no))
             album_dir = os.path.join(import_dir, album)
             if os.path.exists(album_dir):
                 album_no += 1
@@ -729,9 +737,10 @@ class LibTestCase(TestCase):
             track_no = 0
             album_item_count = item_count
             while album_item_count:
-                title = u'track {0}'.format(track_no)
-                src = os.path.join(RSRC, 'full.mp3')
-                dest = os.path.join(album_dir, '{0}.mp3'.format(title))
+                src = os.path.join(RSRC, b'full.mp3')
+                title_file = util.bytestring_path(u'track {0}.mp3'
+                                                  .format(track_no))
+                dest = os.path.join(album_dir, title_file)
                 if os.path.exists(dest):
                     track_no += 1
                     continue
@@ -762,8 +771,15 @@ class LibTestCase(TestCase):
 
         If `path` is not set in `values` it is set to `item.destination()`.
         """
+        # When specifying a path, store it normalized (as beets does
+        # ordinarily).
+        if 'path' in values:
+            values['path'] = util.normpath(values['path'])
+
         item = self.create_item(**values)
         item.add(self.lib)
+
+        # Ensure every item has a path.
         if 'path' not in values:
             item['path'] = item.destination()
             item.store()
@@ -774,7 +790,8 @@ class LibTestCase(TestCase):
         """
         item = self.create_item(**values)
         extension = item['format'].lower()
-        item['path'] = os.path.join(RSRC, 'min.' + extension)
+        item['path'] = os.path.join(RSRC,
+                                    util.bytestring_path('min.' + extension))
         item.add(self.lib)
         item.move(copy=True)
         item.store()
@@ -792,9 +809,9 @@ class LibTestCase(TestCase):
         """
         # TODO base this on `add_item_fixture()`
         items = []
-        path = os.path.join(RSRC, 'full.' + ext)
+        path = os.path.join(RSRC, util.bytestring_path('full.' + ext))
         for i in range(count):
-            item = Item.from_path(bytes(path))
+            item = Item.from_path(path)
             item.album = u'\u00e4lbum {0}'.format(i)  # Check unicode paths
             item.title = u't\u00eftle {0}'.format(i)
             item.add(self.lib)
@@ -807,7 +824,7 @@ class LibTestCase(TestCase):
         """Add an album with files to the database.
         """
         items = []
-        path = os.path.join(RSRC, 'full.' + ext)
+        path = os.path.join(RSRC, util.bytestring_path('full.' + ext))
         for i in range(track_count):
             item = Item.from_path(bytes(path))
             item.album = u'\u00e4lbum'  # Check unicode paths

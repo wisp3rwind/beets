@@ -45,9 +45,11 @@ import mutagen.flac
 import mutagen.monkeysaudio
 import mutagen.asf
 import mutagen.aiff
+import codecs
 import datetime
 import re
 import base64
+import binascii
 import math
 import struct
 import imghdr
@@ -158,7 +160,8 @@ def _safe_cast(out_type, val):
         else:
             if not isinstance(val, basestring):
                 val = unicode(val)
-            match = re.match(r'[\+-]?[0-9\.]+', val.strip())
+            match = re.match(r'[\+-]?([0-9]+\.?[0-9]*|[0-9]*\.[0-9]+)',
+                             val.strip())
             if match:
                 val = match.group(0)
                 if val:
@@ -180,14 +183,14 @@ def _unpack_asf_image(data):
     of exceptions (out-of-bounds, etc.). We should clean this up
     sometime so that the failure modes are well-defined.
     """
-    type, size = struct.unpack_from(b'<bi', data)
+    type, size = struct.unpack_from('<bi', data)
     pos = 5
-    mime = ""
+    mime = b''
     while data[pos:pos + 2] != b'\x00\x00':
         mime += data[pos:pos + 2]
         pos += 2
     pos += 2
-    description = ""
+    description = b''
     while data[pos:pos + 2] != b'\x00\x00':
         description += data[pos:pos + 2]
         pos += 2
@@ -200,7 +203,7 @@ def _unpack_asf_image(data):
 def _pack_asf_image(mime, data, type=3, description=""):
     """Pack image data for a WM/Picture tag.
     """
-    tag_data = struct.pack(b'<bi', type, len(data))
+    tag_data = struct.pack('<bi', type, len(data))
     tag_data += mime.encode("utf-16-le") + b'\x00\x00'
     tag_data += description.encode("utf-16-le") + b'\x00\x00'
     tag_data += data
@@ -221,9 +224,9 @@ def _sc_decode(soundcheck):
     # SoundCheck tags consist of 10 numbers, each represented by 8
     # characters of ASCII hex preceded by a space.
     try:
-        soundcheck = soundcheck.replace(b' ', b'').decode('hex')
-        soundcheck = struct.unpack(b'!iiiiiiiiii', soundcheck)
-    except (struct.error, TypeError):
+        soundcheck = codecs.decode(soundcheck.replace(b' ', b''), 'hex')
+        soundcheck = struct.unpack('!iiiiiiiiii', soundcheck)
+    except (struct.error, TypeError, binascii.Error):
         # SoundCheck isn't in the format we expect, so return default
         # values.
         return 0.0, 0.0
@@ -278,8 +281,8 @@ def _sc_encode(gain, peak):
 
 def _wider_test_jpeg(data):
     """Test for a jpeg file following the UNIX file implementation which
-    uses the magic bytes rather than just looking for the bytes b'JFIF'
-    or b'EXIF' at a fixed position.
+    uses the magic bytes rather than just looking for the bytes that
+    represent 'JFIF' or 'EXIF' at a fixed position.
     """
     if data[:2] == b'\xff\xd8':
         return 'jpeg'
@@ -1069,7 +1072,7 @@ class MediaField(object):
                          getting this property.
 
         """
-        self.out_type = kwargs.get(b'out_type', unicode)
+        self.out_type = kwargs.get('out_type', unicode)
         self._styles = styles
 
     def styles(self, mutagen_file):
@@ -1133,7 +1136,7 @@ class ListMediaField(MediaField):
         """Returns a ``MediaField`` descriptor that gets and sets the
         first item.
         """
-        options = {b'out_type': self.out_type}
+        options = {'out_type': self.out_type}
         return MediaField(*self._styles, **options)
 
 
@@ -1154,7 +1157,7 @@ class DateField(MediaField):
         storage styles do not return a value.
         """
         super(DateField, self).__init__(*date_styles)
-        year_style = kwargs.get(b'year', None)
+        year_style = kwargs.get('year', None)
         if year_style:
             self._year_field = MediaField(*year_style)
 

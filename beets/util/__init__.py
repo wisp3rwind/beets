@@ -26,6 +26,7 @@ import traceback
 import subprocess
 import platform
 import shlex
+from beets.util import hidden
 
 
 MAX_FILENAME_LENGTH = 200
@@ -151,14 +152,15 @@ def ancestry(path):
     return out
 
 
-def sorted_walk(path, ignore=(), logger=None):
+def sorted_walk(path, ignore=(), ignore_hidden=False, logger=None):
     """Like `os.walk`, but yields things in case-insensitive sorted,
     breadth-first order.  Directory and file names matching any glob
     pattern in `ignore` are skipped. If `logger` is provided, then
     warning messages are logged there when a directory cannot be listed.
     """
-    # Make sure the path isn't a Unicode string.
+    # Make sure the pathes aren't Unicode strings.
     path = bytestring_path(path)
+    ignore = [bytestring_path(i) for i in ignore]
 
     # Get all the directories and files at this level.
     try:
@@ -185,10 +187,11 @@ def sorted_walk(path, ignore=(), logger=None):
 
         # Add to output as either a file or a directory.
         cur = os.path.join(path, base)
-        if os.path.isdir(syspath(cur)):
-            dirs.append(base)
-        else:
-            files.append(base)
+        if (ignore_hidden and not hidden.is_hidden(cur)) or not ignore_hidden:
+            if os.path.isdir(syspath(cur)):
+                dirs.append(base)
+            else:
+                files.append(base)
 
     # Sort lists (case-insensitive) and yield the current level.
     dirs.sort(key=bytes.lower)
@@ -199,7 +202,7 @@ def sorted_walk(path, ignore=(), logger=None):
     for base in dirs:
         cur = os.path.join(path, base)
         # yield from sorted_walk(...)
-        for res in sorted_walk(cur, ignore, logger):
+        for res in sorted_walk(cur, ignore, ignore_hidden, logger):
             yield res
 
 
@@ -262,6 +265,7 @@ def prune_dirs(path, root=None, clutter=('.DS_Store', 'Thumbs.db')):
         if not os.path.exists(directory):
             # Directory gone already.
             continue
+        clutter = [bytestring_path(c) for c in clutter]
         if fnmatch_all(os.listdir(directory), clutter):
             # Directory contains only clutter (or nothing).
             try:
@@ -301,13 +305,13 @@ def _fsencoding():
     UTF-8 (not MBCS).
     """
     encoding = sys.getfilesystemencoding() or sys.getdefaultencoding()
-    if encoding == b'mbcs':
+    if encoding == 'mbcs':
         # On Windows, a broken encoding known to Python as "MBCS" is
         # used for the filesystem. However, we only use the Unicode API
         # for Windows paths, so the encoding is actually immaterial so
         # we can avoid dealing with this nastiness. We arbitrarily
         # choose UTF-8.
-        encoding = b'utf8'
+        encoding = 'utf8'
     return encoding
 
 
@@ -322,7 +326,7 @@ def bytestring_path(path):
     # On Windows, remove the magic prefix added by `syspath`. This makes
     # ``bytestring_path(syspath(X)) == X``, i.e., we can safely
     # round-trip through `syspath`.
-    if os.path.__name__ == b'ntpath' and path.startswith(WINDOWS_MAGIC_PREFIX):
+    if os.path.__name__ == 'ntpath' and path.startswith(WINDOWS_MAGIC_PREFIX):
         path = path[len(WINDOWS_MAGIC_PREFIX):]
 
     # Try to encode with default encodings, but fall back to UTF8.
@@ -330,6 +334,9 @@ def bytestring_path(path):
         return path.encode(_fsencoding())
     except (UnicodeError, LookupError):
         return path.encode('utf8')
+
+
+PATH_SEP = bytestring_path(os.sep)
 
 
 def displayable_path(path, separator=u'; '):
@@ -359,7 +366,7 @@ def syspath(path, prefix=True):
     *really* know what you're doing.
     """
     # Don't do anything if we're not on windows
-    if os.path.__name__ != b'ntpath':
+    if os.path.__name__ != 'ntpath':
         return path
 
     if not isinstance(path, unicode):
@@ -652,19 +659,19 @@ def cpu_count():
     """
     # Adapted from the soundconverter project:
     # https://github.com/kassoulet/soundconverter
-    if sys.platform == b'win32':
+    if sys.platform == 'win32':
         try:
             num = int(os.environ['NUMBER_OF_PROCESSORS'])
         except (ValueError, KeyError):
             num = 0
-    elif sys.platform == b'darwin':
+    elif sys.platform == 'darwin':
         try:
             num = int(command_output([b'/usr/sbin/sysctl', b'-n', b'hw.ncpu']))
         except (ValueError, OSError, subprocess.CalledProcessError):
             num = 0
     else:
         try:
-            num = os.sysconf(b'SC_NPROCESSORS_ONLN')
+            num = os.sysconf('SC_NPROCESSORS_ONLN')
         except (ValueError, OSError, AttributeError):
             num = 0
     if num >= 1:
@@ -691,7 +698,7 @@ def command_output(cmd, shell=False):
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        close_fds=platform.system() != b'Windows',
+        close_fds=platform.system() != 'Windows',
         shell=shell
     )
     stdout, stderr = proc.communicate()
@@ -711,7 +718,7 @@ def max_filename_length(path, limit=MAX_FILENAME_LENGTH):
     misreports its capacity). If it cannot be determined (e.g., on
     Windows), return `limit`.
     """
-    if hasattr(os, b'statvfs'):
+    if hasattr(os, 'statvfs'):
         try:
             res = os.statvfs(path)
         except OSError:
@@ -795,7 +802,7 @@ def _windows_long_path_name(short_path):
     long path given a short filename.
     """
     if not isinstance(short_path, unicode):
-        short_path = unicode(short_path)
+        short_path = short_path.decode(_fsencoding())
 
     import ctypes
     buf = ctypes.create_unicode_buffer(260)

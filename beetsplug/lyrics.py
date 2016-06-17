@@ -28,6 +28,18 @@ import urllib
 import warnings
 from HTMLParser import HTMLParseError
 
+try:
+    from bs4 import SoupStrainer, BeautifulSoup
+    HAS_BEAUTIFUL_SOUP = True
+except ImportError:
+    HAS_BEAUTIFUL_SOUP = False
+
+try:
+    import langdetect
+    HAS_LANGDETECT = True
+except ImportError:
+    HAS_LANGDETECT = False
+
 from beets import plugins
 from beets import ui
 
@@ -334,11 +346,12 @@ class LyricsWiki(SymbolsReplaced):
 
         # Get the HTML fragment inside the appropriate HTML element and then
         # extract the text from it.
-        html_frag = extract_text_in(unescape(html), u"<div class='lyricbox'>")
-        lyrics = scrape_lyrics_from_html(html_frag)
+        html_frag = extract_text_in(html, u"<div class='lyricbox'>")
+        if html_frag:
+            lyrics = _scrape_strip_cruft(html_frag, True)
 
-        if lyrics and 'Unfortunately, we are not licensed' not in lyrics:
-            return lyrics
+            if lyrics and 'Unfortunately, we are not licensed' not in lyrics:
+                return lyrics
 
 
 class LyricsCom(Backend):
@@ -415,7 +428,8 @@ def scrape_lyrics_from_html(html):
     """Scrape lyrics from a URL. If no lyrics can be found, return None
     instead.
     """
-    from bs4 import SoupStrainer, BeautifulSoup
+    if not HAS_BEAUTIFUL_SOUP:
+        return None
 
     if not html:
         return None
@@ -489,7 +503,7 @@ class Google(Backend):
         try:
             text = unicodedata.normalize('NFKD', text).encode('ascii',
                                                               'ignore')
-            text = unicode(re.sub('[-\s]+', ' ', text))
+            text = unicode(re.sub('[-\s]+', ' ', text.decode('utf-8')))
         except UnicodeDecodeError:
             self._log.exception(u"Failing to normalize '{0}'", text)
         return text
@@ -588,17 +602,35 @@ class LyricsPlugin(plugins.BeetsPlugin):
         self.config['genius_api_key'].redact = True
 
         available_sources = list(self.SOURCES)
-        if not self.config['google_API_key'].get() and \
-                'google' in self.SOURCES:
-            available_sources.remove('google')
-        self.config['sources'] = plugins.sanitize_choices(
+        sources = plugins.sanitize_choices(
             self.config['sources'].as_str_seq(), available_sources)
 
-        self.backends = [self.SOURCE_BACKENDS[key](self.config, self._log)
-                         for key in self.config['sources'].as_str_seq()]
+        if 'google' in sources:
+            if not self.config['google_API_key'].get():
+                # We log a *debug* message here because the default
+                # configuration includes `google`. This way, the source
+                # is silent by default but can be enabled just by
+                # setting an API key.
+                self._log.debug(u'Disabling google source: '
+                                u'no API key configured.')
+                sources.remove('google')
+            elif not HAS_BEAUTIFUL_SOUP:
+                self._log.warn(u'To use the google lyrics source, you must '
+                               u'install the beautifulsoup4 module. See the '
+                               u'documentation for further details.')
+                sources.remove('google')
+
         self.config['bing_lang_from'] = [
             x.lower() for x in self.config['bing_lang_from'].as_str_seq()]
         self.bing_auth_token = None
+
+        if not HAS_LANGDETECT and self.config['bing_client_secret'].get():
+            self._log.warn(u'To use bing translations, you need to '
+                           u'install the langdetect module. See the '
+                           u'documentation for further details.')
+
+        self.backends = [self.SOURCE_BACKENDS[source](self.config, self._log)
+                         for source in sources]
 
     def get_bing_access_token(self):
         params = {
@@ -672,10 +704,8 @@ class LyricsPlugin(plugins.BeetsPlugin):
 
         if lyrics:
             self._log.info(u'fetched lyrics: {0}', item)
-            if self.config['bing_client_secret'].get():
-                from langdetect import detect
-
-                lang_from = detect(lyrics)
+            if HAS_LANGDETECT and self.config['bing_client_secret'].get():
+                lang_from = langdetect.detect(lyrics)
                 if self.config['bing_lang_to'].get() != lang_from and (
                     not self.config['bing_lang_from'] or (
                         lang_from in self.config[
@@ -692,7 +722,6 @@ class LyricsPlugin(plugins.BeetsPlugin):
         item.lyrics = lyrics
         if write:
             item.try_write()
-        print(lyrics)
         item.store()
 
     def get_lyrics(self, artist, title):

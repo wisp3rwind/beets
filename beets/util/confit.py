@@ -22,7 +22,6 @@ import os
 import pkgutil
 import sys
 import yaml
-import types
 import collections
 import re
 try:
@@ -48,10 +47,9 @@ REDACTED_TOMBSTONE = 'REDACTED'
 # Utilities.
 
 PY3 = sys.version_info[0] == 3
-STRING = str if PY3 else unicode
-BASESTRING = str if PY3 else basestring
-NUMERIC_TYPES = (int, float) if PY3 else (int, float, long)
-TYPE_TYPES = (type,) if PY3 else (type, types.ClassType)
+STRING = str if PY3 else unicode  # noqa
+BASESTRING = str if PY3 else basestring  # noqa
+NUMERIC_TYPES = (int, float) if PY3 else (int, float, long)  # noqa
 
 
 def iter_first(sequence):
@@ -60,10 +58,7 @@ def iter_first(sequence):
     """
     it = iter(sequence)
     try:
-        if PY3:
-            return next(it)
-        else:
-            return it.next()
+        return next(it)
     except StopIteration:
         raise ValueError()
 
@@ -136,7 +131,7 @@ class ConfigSource(dict):
         )
 
     @classmethod
-    def of(self, value):
+    def of(cls, value):
         """Given either a dictionary or a `ConfigSource` object, return
         a `ConfigSource` object. This lets a function accept either type
         of object as an argument.
@@ -543,7 +538,7 @@ def _package_path(name):
     ``name == "__main__"``).
     """
     loader = pkgutil.get_loader(name)
-    if loader is None or name == b'__main__':
+    if loader is None or name == '__main__':
         return None
 
     if hasattr(loader, 'get_filename'):

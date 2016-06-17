@@ -195,7 +195,7 @@ class Bs1770gainBackend(Backend):
         # Construct shell command.
         cmd = [self.command]
         cmd = cmd + [self.method]
-        cmd = cmd + [b'-it']
+        cmd = cmd + [b'-p']
 
         # Workaround for Windows: the underlying tool fails on paths
         # with the \\?\ prefix, so we don't use it here. This
@@ -286,7 +286,7 @@ class CommandBackend(Backend):
         """Computes the track gain of the given tracks, returns a list
         of TrackGain objects.
         """
-        supported_items = filter(self.format_supported, items)
+        supported_items = list(filter(self.format_supported, items))
         output = self.compute_gain(supported_items, False)
         return output
 
@@ -297,7 +297,7 @@ class CommandBackend(Backend):
         # TODO: What should be done when not all tracks in the album are
         # supported?
 
-        supported_items = filter(self.format_supported, album.items())
+        supported_items = list(filter(self.format_supported, album.items()))
         if len(supported_items) != len(album.items()):
             self._log.debug(u'tracks are of unsupported format')
             return AlbumGain(None, [])

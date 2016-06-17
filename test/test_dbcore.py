@@ -214,7 +214,7 @@ class ModelTest(unittest.TestCase):
         model.field_one = 123
         model.store()
         row = self.db._connection().execute('select * from test').fetchone()
-        self.assertEqual(row[b'field_one'], 123)
+        self.assertEqual(row['field_one'], 123)
 
     def test_retrieve_by_id(self):
         model = TestModel1()
@@ -609,7 +609,7 @@ class ResultsIteratorTest(unittest.TestCase):
         results = self.db._fetch(TestModel1)
         it1 = iter(results)
         it2 = iter(results)
-        it1.next()
+        next(it1)
         list(it2)
         self.assertEqual(len(list(it1)), 1)
 
@@ -658,5 +658,5 @@ class ResultsIteratorTest(unittest.TestCase):
 def suite():
     return unittest.TestLoader().loadTestsFromName(__name__)
 
-if __name__ == b'__main__':
+if __name__ == '__main__':
     unittest.main(defaultTest='suite')

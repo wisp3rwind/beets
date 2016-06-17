@@ -38,8 +38,8 @@ import Queue
 from threading import Thread, Lock
 import sys
 
-BUBBLE = b'__PIPELINE_BUBBLE__'
-POISON = b'__PIPELINE_POISON__'
+BUBBLE = '__PIPELINE_BUBBLE__'
+POISON = '__PIPELINE_POISON__'
 
 DEFAULT_QUEUE_SIZE = 16
 
@@ -248,7 +248,7 @@ class FirstPipelineThread(PipelineThread):
 
                 # Get the value from the generator.
                 try:
-                    msg = self.coro.next()
+                    msg = next(self.coro)
                 except StopIteration:
                     break
 
@@ -281,7 +281,7 @@ class MiddlePipelineThread(PipelineThread):
     def run(self):
         try:
             # Prime the coroutine.
-            self.coro.next()
+            next(self.coro)
 
             while True:
                 with self.abort_lock:
@@ -326,7 +326,7 @@ class LastPipelineThread(PipelineThread):
 
     def run(self):
         # Prime the coroutine.
-        self.coro.next()
+        next(self.coro)
 
         try:
             while True:
@@ -444,7 +444,7 @@ class Pipeline(object):
 
         # "Prime" the coroutines.
         for coro in coros[1:]:
-            coro.next()
+            next(coro)
 
         # Begin the pipeline.
         for out in coros[0]:
@@ -459,7 +459,7 @@ class Pipeline(object):
                 yield msg
 
 # Smoke test.
-if __name__ == b'__main__':
+if __name__ == '__main__':
     import time
 
     # Test a normally-terminating pipeline both in sequence and

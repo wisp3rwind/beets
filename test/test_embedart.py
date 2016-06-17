@@ -17,8 +17,8 @@ from __future__ import division, absolute_import, print_function
 
 import os.path
 import shutil
-from mock import patch
 from functools import wraps
+from mock import patch, MagicMock
 
 import test
 from test import unittest
@@ -35,7 +35,7 @@ def require_artresizer_compare(test):
     @wraps(test)
     def wrapper(*args, **kwargs):
         if not ArtResizer.shared.can_compare:
-            raise unittest.SkipTest()
+            raise unittest.SkipTest("compare not available")
         else:
             return test(*args, **kwargs)
 
@@ -44,10 +44,10 @@ def require_artresizer_compare(test):
 
 class EmbedartCliTest(test.LibTestCase):
 
-    small_artpath = os.path.join(test.RSRC, 'image-2x3.jpg')
-    abbey_artpath = os.path.join(test.RSRC, 'abbey.jpg')
-    abbey_similarpath = os.path.join(test.RSRC, 'abbey-similar.jpg')
-    abbey_differentpath = os.path.join(test.RSRC, 'abbey-different.jpg')
+    small_artpath = os.path.join(test.RSRC, b'image-2x3.jpg')
+    abbey_artpath = os.path.join(test.RSRC, b'abbey.jpg')
+    abbey_similarpath = os.path.join(test.RSRC, b'abbey-similar.jpg')
+    abbey_differentpath = os.path.join(test.RSRC, b'abbey-different.jpg')
 
     def setUp(self):
         super(EmbedartCliTest, self).setUp()
@@ -56,7 +56,7 @@ class EmbedartCliTest(test.LibTestCase):
     def _read_image(self, artpath=None):
         if not artpath:
             artpath = self.small_artpath
-        with open(syspath(artpath)) as f:
+        with open(syspath(artpath), 'rb') as f:
             return f.read()
 
     def test_embed_art_from_file(self):
@@ -102,9 +102,9 @@ class EmbedartCliTest(test.LibTestCase):
 
         album = self.add_album_fixture()
 
-        tmp_path = os.path.join(self.temp_dir, 'copy.jpg')
-        with open(tmp_path, 'w') as f:
-            f.write(u'I am not an image.')
+        tmp_path = os.path.join(self.temp_dir, b'copy.jpg')
+        with open(tmp_path, 'wb') as f:
+            f.write(b'I am not an image.')
 
         self.run_command('embedart', '-f', tmp_path)
 
@@ -144,7 +144,7 @@ class EmbedartCliTest(test.LibTestCase):
                              self.abbey_similarpath))
 
     def test_non_ascii_album_path(self):
-        resource_path = os.path.join(test.RSRC, 'image.mp3').encode('utf8')
+        resource_path = os.path.join(test.RSRC, b'image.mp3')
         album = self.add_album_fixture()
         trackpath = album.items()[0].path
         albumpath = album.path
@@ -152,45 +152,73 @@ class EmbedartCliTest(test.LibTestCase):
 
         self.run_command('extractart', '-n', 'extracted')
 
-        self.assertExists(syspath(os.path.join(albumpath, b'extracted.png')))
+        self.assertExists(os.path.join(albumpath, b'extracted.png'))
 
 
 @patch('beets.art.subprocess')
 @patch('beets.art.extract')
 @test.slow_test
 class ArtSimilarityTest(unittest.TestCase):
-    def test_imagemagick_response(self, mock_extract, mock_subprocess):
-        mock_extract.return_value = True
-        proc = mock_subprocess.Popen.return_value
-        log = logging.getLogger('beets.embedart')
+    def setUp(self):
+        self.item = test.Item()
+        self.log = logging.getLogger('beets.embedart')
 
-        # everything is fine
-        proc.returncode = 0
-        proc.communicate.return_value = "10", "tagada"
-        self.assertTrue(art.check_art_similarity(log, None, None, 20))
-        self.assertFalse(art.check_art_similarity(log, None, None, 5))
+    def _similarity(self, threshold):
+        return art.check_art_similarity(self.log, self.item, b'path',
+                                        threshold)
 
-        # small failure
-        proc.returncode = 1
-        proc.communicate.return_value = "tagada", "10"
-        self.assertTrue(art.check_art_similarity(log, None, None, 20))
-        self.assertFalse(art.check_art_similarity(log, None, None, 5))
+    def _popen(self, status=0, stdout="", stderr=""):
+        """Create a mock `Popen` object."""
+        popen = MagicMock(returncode=status)
+        popen.communicate.return_value = stdout, stderr
+        return popen
 
-        # bigger failure
-        proc.returncode = 2
-        self.assertIsNone(art.check_art_similarity(log, None, None, 20))
+    def _mock_popens(self, mock_extract, mock_subprocess, compare_status=0,
+                     compare_stdout="", compare_stderr="", convert_status=0):
+        mock_extract.return_value = b'extracted_path'
+        mock_subprocess.Popen.side_effect = [
+            # The `convert` call.
+            self._popen(convert_status),
+            # The `compare` call.
+            self._popen(compare_status, compare_stdout, compare_stderr),
+        ]
 
-        # IM result parsing problems
-        proc.returncode = 0
-        proc.communicate.return_value = "foo", "bar"
-        self.assertIsNone(art.check_art_similarity(log, None, None, 20))
+    def test_compare_success_similar(self, mock_extract, mock_subprocess):
+        self._mock_popens(mock_extract, mock_subprocess, 0, "10", "err")
+        self.assertTrue(self._similarity(20))
 
-        proc.returncode = 1
-        self.assertIsNone(art.check_art_similarity(log, None, None, 20))
+    def test_compare_success_different(self, mock_extract, mock_subprocess):
+        self._mock_popens(mock_extract, mock_subprocess, 0, "10", "err")
+        self.assertFalse(self._similarity(5))
+
+    def test_compare_status1_similar(self, mock_extract, mock_subprocess):
+        self._mock_popens(mock_extract, mock_subprocess, 1, "out", "10")
+        self.assertTrue(self._similarity(20))
+
+    def test_compare_status1_different(self, mock_extract, mock_subprocess):
+        self._mock_popens(mock_extract, mock_subprocess, 1, "out", "10")
+        self.assertFalse(self._similarity(5))
+
+    def test_compare_failed(self, mock_extract, mock_subprocess):
+        self._mock_popens(mock_extract, mock_subprocess, 2, "out", "10")
+        self.assertIsNone(self._similarity(20))
+
+    def test_compare_parsing_error(self, mock_extract, mock_subprocess):
+        self._mock_popens(mock_extract, mock_subprocess, 0, "foo", "bar")
+        self.assertIsNone(self._similarity(20))
+
+    def test_compare_parsing_error_and_failure(self, mock_extract,
+                                               mock_subprocess):
+        self._mock_popens(mock_extract, mock_subprocess, 1, "foo", "bar")
+        self.assertIsNone(self._similarity(20))
+
+    def test_convert_failure(self, mock_extract, mock_subprocess):
+        self._mock_popens(mock_extract, mock_subprocess, convert_status=1)
+        self.assertIsNone(self._similarity(20))
 
 
 def suite():
     return unittest.TestLoader().loadTestsFromName(__name__)
 
-if __name__ == b'__main__':
+if __name__ == '__main__':
     unittest.main(defaultTest='suite')

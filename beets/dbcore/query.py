@@ -22,6 +22,7 @@ from operator import mul
 from beets import util
 from datetime import datetime, timedelta
 import unicodedata
+from functools import reduce
 
 
 class ParsingError(ValueError):
@@ -146,9 +147,9 @@ class NoneQuery(FieldQuery):
         return self.field + " IS NULL", ()
 
     @classmethod
-    def match(self, item):
+    def match(cls, item):
         try:
-            return item[self.field] is None
+            return item[cls.field] is None
         except KeyError:
             return True
 
@@ -841,7 +842,7 @@ class SlowFieldSort(FieldSort):
 
 class NullSort(Sort):
     """No sorting. Leave results unsorted."""
-    def sort(items):
+    def sort(self, items):
         return items
 
     def __nonzero__(self):

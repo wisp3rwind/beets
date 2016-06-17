@@ -56,7 +56,7 @@ if 'sdist' in sys.argv:
 
 setup(
     name='beets',
-    version='1.3.18',
+    version='1.3.19',
     description='music tagger and library organizer',
     author='Adrian Sampson',
     author_email='adrian@radbox.org',
@@ -93,14 +93,12 @@ setup(
         'musicbrainzngs>=0.4',
         'pyyaml',
         'jellyfish',
-    ] + (['colorama'] if (sys.platform == 'win32') else []) +
-        (['ordereddict'] if sys.version_info < (2, 7, 0) else []),
+    ] + (['colorama'] if (sys.platform == 'win32') else []),
 
     tests_require=[
         'beautifulsoup4',
         'flask',
         'mock',
-        'pyechonest',
         'pylast',
         'rarfile',
         'responses',
@@ -114,7 +112,6 @@ setup(
         'fetchart': ['requests'],
         'chroma': ['pyacoustid'],
         'discogs': ['discogs-client>=2.1.0'],
-        'echonest': ['pyechonest'],
         'lastgenre': ['pylast'],
         'mpdstats': ['python-mpd2'],
         'web': ['flask', 'flask-cors'],

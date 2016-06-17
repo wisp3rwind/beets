@@ -209,13 +209,13 @@ class Model(object):
     # Essential field accessors.
 
     @classmethod
-    def _type(self, key):
+    def _type(cls, key):
         """Get the type of a field, a `Type` instance.
 
         If the field has no explicit type, it is given the base `Type`,
         which does no conversion.
         """
-        return self._fields.get(key) or self._types.get(key) or types.DEFAULT
+        return cls._fields.get(key) or cls._types.get(key) or types.DEFAULT
 
     def __getitem__(self, key):
         """Get the value for a field. Raise a KeyError if the field is
@@ -267,18 +267,18 @@ class Model(object):
         `computed` parameter controls whether computed (plugin-provided)
         fields are included in the key list.
         """
-        base_keys = list(self._fields) + self._values_flex.keys()
+        base_keys = list(self._fields) + list(self._values_flex.keys())
         if computed:
-            return base_keys + self._getters().keys()
+            return base_keys + list(self._getters().keys())
         else:
             return base_keys
 
     @classmethod
-    def all_keys(self):
+    def all_keys(cls):
         """Get a list of available keys for objects of this type.
         Includes fixed and computed fields.
         """
-        return list(self._fields) + self._getters().keys()
+        return list(cls._fields) + list(cls._getters().keys())
 
     # Act like a dictionary.
 
@@ -562,13 +562,13 @@ class Results(object):
                 'SELECT * FROM {0} WHERE entity_id=?'.format(
                     self.model_class._flex_table
                 ),
-                (row[b'id'],)
+                (row['id'],)
             )
 
         cols = dict(row)
         values = dict((k, v) for (k, v) in cols.items()
                       if not k[:4] == 'flex')
-        flex_values = dict((row[b'key'], row[b'value']) for row in flex_rows)
+        flex_values = dict((row['key'], row['value']) for row in flex_rows)
 
         # Construct the Python object
         obj = self.model_class._awaken(self.db, values, flex_values)
@@ -595,6 +595,11 @@ class Results(object):
     def __nonzero__(self):
         """Does this result contain any objects?
         """
+        return self.__bool__()
+
+    def __bool__(self):
+        """Does this result contain any objects?
+        """
         return bool(len(self))
 
     def __getitem__(self, n):
@@ -609,8 +614,8 @@ class Results(object):
         it = iter(self)
         try:
             for i in range(n):
-                it.next()
-            return it.next()
+                next(it)
+            return next(it)
         except StopIteration:
             raise IndexError(u'result index {0} out of range'.format(n))
 
@@ -620,7 +625,7 @@ class Results(object):
         """
         it = iter(self)
         try:
-            return it.next()
+            return next(it)
         except StopIteration:
             return None
 
@@ -732,6 +737,14 @@ class Database(object):
 
                 self._connections[thread_id] = conn
                 return conn
+
+    def _close(self):
+        """Close the all connections to the underlying SQLite database
+        from all threads. This does not render the database object
+        unusable; new connections can still be opened on demand.
+        """
+        with self._shared_map_lock:
+            self._connections.clear()
 
     @contextlib.contextmanager
     def _tx_stack(self):

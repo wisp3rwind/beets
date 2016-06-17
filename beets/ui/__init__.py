@@ -43,7 +43,7 @@ from beets.autotag import mb
 from beets.dbcore import query as db_query
 
 # On Windows platforms, use colorama to support "ANSI" terminal colors.
-if sys.platform == b'win32':
+if sys.platform == 'win32':
     try:
         import colorama
     except ImportError:
@@ -72,22 +72,38 @@ class UserError(Exception):
 
 # Encoding utilities.
 
+
+def _in_encoding():
+    """Get the encoding to use for *inputting* strings from the console.
+    """
+    return _stream_encoding(sys.stdin)
+
+
 def _out_encoding():
     """Get the encoding to use for *outputting* strings to the console.
+    """
+    return _stream_encoding(sys.stdout)
+
+
+def _stream_encoding(stream, default='utf8'):
+    """A helper for `_in_encoding` and `_out_encoding`: get the stream's
+    preferred encoding, using a configured override or a default
+    fallback if neither is not specified.
     """
     # Configured override?
     encoding = config['terminal_encoding'].get()
     if encoding:
         return encoding
 
-    # For testing: When sys.stdout is a StringIO under the test harness,
-    # it doesn't have an `encodiing` attribute. Just use UTF-8.
-    if not hasattr(sys.stdout, 'encoding'):
-        return 'utf8'
+    # For testing: When sys.stdout or sys.stdin is a StringIO under the
+    # test harness, it doesn't have an `encoding` attribute. Just use
+    # UTF-8.
+    if not hasattr(stream, 'encoding'):
+        return default
 
     # Python's guessed output stream encoding, or UTF-8 as a fallback
     # (e.g., when piped to a file).
-    return sys.stdout.encoding or 'utf8'
+    return stream.encoding or default
 
 
 def _arg_encoding():
@@ -193,7 +209,7 @@ def input_(prompt=None):
     except EOFError:
         raise UserError(u'stdin stream ended while input required')
 
-    return resp.decode(sys.stdin.encoding or 'utf8', 'ignore')
+    return resp.decode(_in_encoding(), 'ignore')
 
 
 def input_options(options, require=False, prompt=None, fallback_prompt=None,
@@ -625,7 +641,7 @@ def term_width():
     except IOError:
         return fallback
     try:
-        height, width = struct.unpack(b'hh', buf)
+        height, width = struct.unpack('hh', buf)
     except struct.error:
         return fallback
     return width
@@ -725,8 +741,8 @@ def show_path_changes(path_changes):
     sources, destinations = zip(*path_changes)
 
     # Ensure unicode output
-    sources = map(util.displayable_path, sources)
-    destinations = map(util.displayable_path, destinations)
+    sources = list(map(util.displayable_path, sources))
+    destinations = list(map(util.displayable_path, destinations))
 
     # Calculate widths for terminal split
     col_width = (term_width() - len(' -> ')) // 2
@@ -978,7 +994,8 @@ class SubcommandsOptionParser(CommonOptionsParser):
             result.append(name)
             help_width = formatter.width - help_position
             help_lines = textwrap.wrap(subcommand.help, help_width)
-            result.append("%*s%s\n" % (indent_first, "", help_lines[0]))
+            help_line = help_lines[0] if help_lines else ''
+            result.append("%*s%s\n" % (indent_first, "", help_line))
             result.extend(["%*s%s\n" % (help_position, "", line)
                            for line in help_lines[1:]])
         formatter.dedent()
@@ -1074,7 +1091,7 @@ def _load_plugins(config):
     """Load the plugins specified in the configuration.
     """
     paths = config['pluginpath'].get(confit.StrSeq(split=False))
-    paths = map(util.normpath, paths)
+    paths = list(map(util.normpath, paths))
     log.debug(u'plugin paths: {0}', util.displayable_path(paths))
 
     import beetsplug
@@ -1120,7 +1137,7 @@ def _configure(options):
     # Add any additional config files specified with --config. This
     # special handling lets specified plugins get loaded before we
     # finish parsing the command line.
-    if getattr(options, b'config', None) is not None:
+    if getattr(options, 'config', None) is not None:
         config_path = options.config
         del options.config
         config.set_file(config_path)
@@ -1221,6 +1238,7 @@ def _raw_main(args, lib=None):
         from beets.ui.commands import config_edit
         return config_edit()
 
+    test_lib = bool(lib)
     subcommands, plugins, lib = _setup(options, lib)
     parser.add_subcommand(*subcommands)
 
@@ -1228,6 +1246,9 @@ def _raw_main(args, lib=None):
     subcommand.func(lib, suboptions, subargs)
 
     plugins.send('cli_exit', lib=lib)
+    if not test_lib:
+        # Clean up the library unless it came from the test harness.
+        lib._close()
 
 
 def main(args=None):

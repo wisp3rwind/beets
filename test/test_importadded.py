@@ -67,7 +67,7 @@ class ImportAddedTest(unittest.TestCase, ImportHelper):
         self.teardown_beets()
         self.matcher.restore()
 
-    def findMediaFile(self, item):
+    def find_media_file(self, item):
         """Find the pre-import MediaFile for an Item"""
         for m in self.media_files:
             if m.title.replace('Tag', 'Applied') == item.title:
@@ -75,11 +75,11 @@ class ImportAddedTest(unittest.TestCase, ImportHelper):
         raise AssertionError(u"No MediaFile found for Item " +
                              util.displayable_path(item.path))
 
-    def assertEqualTimes(self, first, second, msg=None):
+    def assertEqualTimes(self, first, second, msg=None):  # noqa
         """For comparing file modification times at a sufficient precision"""
         self.assertAlmostEqual(first, second, places=4, msg=msg)
 
-    def assertAlbumImport(self):
+    def assertAlbumImport(self):  # noqa
         self.importer.run()
         album = self.lib.albums().get()
         self.assertEqual(album.added, self.min_mtime)
@@ -102,7 +102,7 @@ class ImportAddedTest(unittest.TestCase, ImportHelper):
         self.assertEqual(album.added, self.min_mtime)
         for item in album.items():
             self.assertEqualTimes(item.added, self.min_mtime)
-            mediafile_mtime = os.path.getmtime(self.findMediaFile(item).path)
+            mediafile_mtime = os.path.getmtime(self.find_media_file(item).path)
             self.assertEqualTimes(item.mtime, mediafile_mtime)
             self.assertEqualTimes(os.path.getmtime(item.path),
                                   mediafile_mtime)
@@ -127,13 +127,13 @@ class ImportAddedTest(unittest.TestCase, ImportHelper):
         for item_path, added_after in items_added_after.iteritems():
             self.assertEqualTimes(items_added_before[item_path], added_after,
                                   u"reimport modified Item.added for " +
-                                  item_path)
+                                  util.displayable_path(item_path))
 
     def test_import_singletons_with_added_dates(self):
         self.config['import']['singletons'] = True
         self.importer.run()
         for item in self.lib.items():
-            mfile = self.findMediaFile(item)
+            mfile = self.find_media_file(item)
             self.assertEqualTimes(item.added, os.path.getmtime(mfile.path))
 
     def test_import_singletons_with_preserved_mtimes(self):
@@ -141,7 +141,7 @@ class ImportAddedTest(unittest.TestCase, ImportHelper):
         self.config['importadded']['preserve_mtimes'] = True
         self.importer.run()
         for item in self.lib.items():
-            mediafile_mtime = os.path.getmtime(self.findMediaFile(item).path)
+            mediafile_mtime = os.path.getmtime(self.find_media_file(item).path)
             self.assertEqualTimes(item.added, mediafile_mtime)
             self.assertEqualTimes(item.mtime, mediafile_mtime)
             self.assertEqualTimes(os.path.getmtime(item.path),
@@ -156,7 +156,7 @@ class ImportAddedTest(unittest.TestCase, ImportHelper):
         # Newer Item path mtimes as if Beets had modified them
         modify_mtimes(items_added_before.keys(), offset=10000)
         # Reimport
-        import_dir = os.path.dirname(items_added_before.keys()[0])
+        import_dir = os.path.dirname(list(items_added_before.keys())[0])
         self._setup_import_session(import_dir=import_dir, singletons=True)
         self.importer.run()
         # Verify the reimported items
@@ -165,11 +165,11 @@ class ImportAddedTest(unittest.TestCase, ImportHelper):
         for item_path, added_after in items_added_after.iteritems():
             self.assertEqualTimes(items_added_before[item_path], added_after,
                                   u"reimport modified Item.added for " +
-                                  item_path)
+                                  util.displayable_path(item_path))
 
 
 def suite():
     return unittest.TestLoader().loadTestsFromName(__name__)
 
-if __name__ == b'__main__':
+if __name__ == '__main__':
     unittest.main(defaultTest='suite')

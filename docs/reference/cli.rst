@@ -211,7 +211,7 @@ remove
 ``````
 ::
 
-    beet remove [-ad] QUERY
+    beet remove [-adf] QUERY
 
 Remove music from your library.
 
@@ -219,6 +219,7 @@ This command uses the same :doc:`query <query>` syntax as the ``list`` command.
 You'll be shown a list of the files that will be removed and asked to confirm.
 By default, this just removes entries from the library database; it doesn't
 touch the files on disk. To actually delete the files, use ``beet remove -d``.
+If you do not want to be prompted to remove the files, use ``beet remove -f``.
 
 .. _modify-cmd:
 
@@ -435,7 +436,10 @@ later on you will want to re-generate the script.
 zsh
 ```
 
-If you use zsh, take a look at the included `completion script`_.
+If you use zsh, take a look at the included `completion script`_. The script
+should be placed in a directory that is part of your ``fpath``, and `not`
+sourced in your ``.zshrc``. Running ``echo $fpath`` will give you a list of
+valid directories.
 
 Another approach is to use zsh's bash completion compatibility. This snippet
 defines some bash-specific functions to make this work without errors::

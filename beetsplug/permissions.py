@@ -16,11 +16,10 @@ from beets.util import ancestry
 
 
 def convert_perm(perm):
-    """If the perm is a int it will first convert it to a string and back
-    to an oct int. Else it just converts it to oct.
+    """If the perm is a int then just return it, otherwise convert it to oct.
     """
     if isinstance(perm, int):
-        return int(bytes(perm), 8)
+        return perm
     else:
         return int(perm, 8)
 
@@ -45,8 +44,8 @@ class Permissions(BeetsPlugin):
 
         # Adding defaults.
         self.config.add({
-            u'file': 644,
-            u'dir': 755
+            u'file': '644',
+            u'dir': '755'
         })
 
         self.register_listener('item_imported', permissions)

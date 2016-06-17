@@ -34,7 +34,7 @@ from xdg import BaseDirectory
 from beets.plugins import BeetsPlugin
 from beets.ui import Subcommand, decargs
 from beets import util
-from beets.util.artresizer import ArtResizer, has_IM, has_PIL
+from beets.util.artresizer import ArtResizer, get_im_version, get_pil_version
 
 
 BASE_DIR = os.path.join(BaseDirectory.xdg_cache_home, "thumbnails")
@@ -92,11 +92,11 @@ class ThumbnailsPlugin(BeetsPlugin):
             if not os.path.exists(dir):
                 os.makedirs(dir)
 
-        if has_IM():
+        if get_im_version():
             self.write_metadata = write_metadata_im
             tool = "IM"
         else:
-            assert has_PIL()  # since we're local
+            assert get_pil_version()  # since we're local
             self.write_metadata = write_metadata_pil
             tool = "PIL"
         self._log.debug(u"using {0} to write metadata", tool)
@@ -162,8 +162,8 @@ class ThumbnailsPlugin(BeetsPlugin):
         See http://standards.freedesktop.org/thumbnail-spec/latest/x227.html
         """
         uri = self.get_uri(path)
-        hash = md5(uri).hexdigest()
-        return b"{0}.png".format(hash)
+        hash = md5(uri.encode('utf-8')).hexdigest()
+        return util.bytestring_path("{0}.png".format(hash))
 
     def add_tags(self, album, image_path):
         """Write required metadata to the thumbnail
@@ -183,7 +183,8 @@ class ThumbnailsPlugin(BeetsPlugin):
             return
         artfile = os.path.split(album.artpath)[1]
         with open(outfilename, 'w') as f:
-            f.write(b"[Desktop Entry]\nIcon=./{0}".format(artfile))
+            f.write('[Desktop Entry]\n')
+            f.write('Icon=./{0}'.format(artfile.decode('utf-8')))
             f.close()
         self._log.debug(u"Wrote file {0}", util.displayable_path(outfilename))
 
@@ -232,7 +233,7 @@ def copy_c_string(c_string):
     # work. A more surefire way would be to allocate a ctypes buffer and copy
     # the data with `memcpy` or somesuch.
     s = ctypes.cast(c_string, ctypes.c_char_p).value
-    return '' + s
+    return b'' + s
 
 
 class GioURI(URIGetter):

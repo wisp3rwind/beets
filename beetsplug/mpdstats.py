@@ -40,6 +40,8 @@ mpd_config = config['mpd']
 def is_url(path):
     """Try to determine if the path is an URL.
     """
+    if isinstance(path, bytes):  # if it's bytes, then it's a path
+        return False
     return path.split('://', 1)[0] in ['http', 'https']
 
 

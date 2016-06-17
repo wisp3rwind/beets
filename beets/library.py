@@ -48,7 +48,7 @@ class PathQuery(dbcore.FieldQuery):
     and case-sensitive otherwise.
     """
 
-    escape_re = re.compile(r'[\\_%]')
+    escape_re = re.compile(br'[\\_%]')
     escape_char = b'\\'
 
     def __init__(self, field, pattern, fast=True, case_sensitive=None):
@@ -85,8 +85,14 @@ class PathQuery(dbcore.FieldQuery):
         colon = query_part.find(':')
         if colon != -1:
             query_part = query_part[:colon]
-        return (os.sep in query_part and
-                os.path.exists(syspath(normpath(query_part))))
+
+        # Test both `sep` and `altsep` (i.e., both slash and backslash on
+        # Windows).
+        return (
+            (os.sep in query_part or
+             (os.altsep and os.altsep in query_part)) and
+            os.path.exists(syspath(normpath(query_part)))
+        )
 
     def match(self, item):
         path = item.path if self.case_sensitive else item.path.lower()
@@ -1325,7 +1331,7 @@ class DefaultTemplateFunctions(object):
     additional context to the functions -- specifically, the Item being
     evaluated.
     """
-    _prefix = b'tmpl_'
+    _prefix = 'tmpl_'
 
     def __init__(self, item=None, lib=None):
         """Parametrize the functions. If `item` or `lib` is None, then
@@ -1465,6 +1471,35 @@ class DefaultTemplateFunctions(object):
         res = u' [{0}]'.format(disam_value)
         self.lib._memotable[memokey] = res
         return res
+
+    @staticmethod
+    def tmpl_first(s, count=1, skip=0, sep=u'; ', join_str=u'; '):
+        """ Gets the item(s) from x to y in a string separated by something
+        and join then with something
+
+        :param s: the string
+        :param count: The number of items included
+        :param skip: The number of items skipped
+        :param sep: the separator. Usually is '; ' (default) or '/ '
+        :param join_str: the string which will join the items, default '; '.
+        """
+        skip = int(skip)
+        count = skip + int(count)
+        return join_str.join(s.split(sep)[skip:count])
+
+    def tmpl_ifdef(self, field, trueval=u'', falseval=u''):
+        """ If field exists return trueval or the field (default)
+        otherwise, emit return falseval (if provided).
+
+        :param field: The name of the field
+        :param trueval: The string if the condition is true
+        :param falseval: The string if the condition is false
+        :return: The string, based on condition
+        """
+        if self.item.formatted().get(field):
+            return trueval if trueval else self.item.formatted().get(field)
+        else:
+            return falseval
 
 
 # Get the name of tmpl_* functions in the above class.

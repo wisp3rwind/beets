@@ -31,6 +31,7 @@ from beets.mediafile import MediaFile, MediaField, Image, \
     ASFStorageStyle, ImageType, CoverArtField
 from beets.library import Item
 from beets.plugins import BeetsPlugin
+from beets.util import bytestring_path
 
 
 class ArtTestMixin(object):
@@ -40,7 +41,8 @@ class ArtTestMixin(object):
     @property
     def png_data(self):
         if not self._png_data:
-            with open(os.path.join(_common.RSRC, 'image-2x3.png'), 'rb') as f:
+            image_file = os.path.join(_common.RSRC, b'image-2x3.png')
+            with open(image_file, 'rb') as f:
                 self._png_data = f.read()
         return self._png_data
     _png_data = None
@@ -48,7 +50,8 @@ class ArtTestMixin(object):
     @property
     def jpg_data(self):
         if not self._jpg_data:
-            with open(os.path.join(_common.RSRC, 'image-2x3.jpg'), 'rb') as f:
+            image_file = os.path.join(_common.RSRC, b'image-2x3.jpg')
+            with open(image_file, 'rb') as f:
                 self._jpg_data = f.read()
         return self._jpg_data
     _jpg_data = None
@@ -56,7 +59,8 @@ class ArtTestMixin(object):
     @property
     def tiff_data(self):
         if not self._jpg_data:
-            with open(os.path.join(_common.RSRC, 'image-2x3.tiff'), 'rb') as f:
+            image_file = os.path.join(_common.RSRC, b'image-2x3.tiff')
+            with open(image_file, 'rb') as f:
                 self._jpg_data = f.read()
         return self._jpg_data
     _jpg_data = None
@@ -168,7 +172,7 @@ class ImageStructureTestMixin(ArtTestMixin):
         self.assertEqual(cover.desc, u'album cover')
         self.assertEqual(mediafile.art, cover.data)
 
-    def assertExtendedImageAttributes(self, image, **kwargs):
+    def assertExtendedImageAttributes(self, image, **kwargs):  # noqa
         """Ignore extended image attributes in the base tests.
         """
         pass
@@ -177,7 +181,7 @@ class ImageStructureTestMixin(ArtTestMixin):
 class ExtendedImageStructureTestMixin(ImageStructureTestMixin):
     """Checks for additional attributes in the image structure."""
 
-    def assertExtendedImageAttributes(self, image, desc=None, type=None):
+    def assertExtendedImageAttributes(self, image, desc=None, type=None):  # noqa
         self.assertEqual(image.desc, desc)
         self.assertEqual(image.type, type)
 
@@ -194,8 +198,8 @@ class ExtendedImageStructureTestMixin(ImageStructureTestMixin):
         self.assertEqual(len(mediafile.images), 3)
 
         # WMA does not preserve the order, so we have to work around this
-        image = filter(lambda i: i.mime_type == 'image/tiff',
-                       mediafile.images)[0]
+        image = list(filter(lambda i: i.mime_type == 'image/tiff',
+                     mediafile.images))[0]
         self.assertExtendedImageAttributes(
             image, desc=u'the composer', type=ImageType.composer)
 
@@ -660,7 +664,7 @@ class ReadWriteTestBase(ArtTestMixin, GenreListTestMixin,
         self.assertIsNone(mediafile.date)
         self.assertIsNone(mediafile.year)
 
-    def assertTags(self, mediafile, tags):
+    def assertTags(self, mediafile, tags):  # noqa
         errors = []
         for key, value in tags.items():
             try:
@@ -675,7 +679,7 @@ class ReadWriteTestBase(ArtTestMixin, GenreListTestMixin,
             self.fail('\n  '.join(errors))
 
     def _mediafile_fixture(self, name):
-        name = name + '.' + self.extension
+        name = bytestring_path(name + '.' + self.extension)
         src = os.path.join(_common.RSRC, name)
         target = os.path.join(self.temp_dir, name)
         shutil.copy(src, target)
@@ -931,13 +935,13 @@ class AIFFTest(ReadWriteTestBase, unittest.TestCase):
 class MediaFieldTest(unittest.TestCase):
 
     def test_properties_from_fields(self):
-        path = os.path.join(_common.RSRC, 'full.mp3')
+        path = os.path.join(_common.RSRC, b'full.mp3')
         mediafile = MediaFile(path)
         for field in MediaFile.fields():
             self.assertTrue(hasattr(mediafile, field))
 
     def test_properties_from_readable_fields(self):
-        path = os.path.join(_common.RSRC, 'full.mp3')
+        path = os.path.join(_common.RSRC, b'full.mp3')
         mediafile = MediaFile(path)
         for field in MediaFile.readable_fields():
             self.assertTrue(hasattr(mediafile, field))
@@ -956,5 +960,5 @@ class MediaFieldTest(unittest.TestCase):
 def suite():
     return unittest.TestLoader().loadTestsFromName(__name__)
 
-if __name__ == b'__main__':
+if __name__ == '__main__':
     unittest.main(defaultTest='suite')
