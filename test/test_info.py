@@ -15,22 +15,17 @@
 
 from __future__ import division, absolute_import, print_function
 
-from test._common import unittest
-from test.helper import TestHelper
+import test
+from test import unittest
 
 from beets.mediafile import MediaFile
 from beets.util import displayable_path
 
 
-class InfoTest(unittest.TestCase, TestHelper):
-
+class InfoTest(test.LibTestCase):
     def setUp(self):
-        self.setup_beets()
+        super(InfoTest, self).setUp()
         self.load_plugins('info')
-
-    def tearDown(self):
-        self.unload_plugins()
-        self.teardown_beets()
 
     def run_command(self, *args):
         super(InfoTest, self).run_command('info', *args)
@@ -51,7 +46,6 @@ class InfoTest(unittest.TestCase, TestHelper):
         self.assertIn('disctitle: DDD', out)
         self.assertIn('genres: a; b; c', out)
         self.assertNotIn('composer:', out)
-        self.remove_mediafile_fixtures()
 
     def test_item_query(self):
         item1, item2 = self.add_item_fixtures(count=2)
@@ -93,7 +87,6 @@ class InfoTest(unittest.TestCase, TestHelper):
         self.assertIn(u'album: AAA', out)
         self.assertIn(u'tracktotal: 5', out)
         self.assertIn(u'title: [various]', out)
-        self.remove_mediafile_fixtures()
 
     def test_include_pattern(self):
         item, = self.add_item_fixtures()
@@ -110,7 +103,7 @@ class InfoTest(unittest.TestCase, TestHelper):
         self.add_item_fixtures()
         out = self.run_with_output('--library', '--format',
                                    '$track. $title - $artist ($length)')
-        self.assertEqual(u'02. tïtle 0 - the artist (0:01)\n', out)
+        self.assertEqual(u'02. t\u00eftle 0 - the artist (0:01)\n', out)
 
 
 def suite():
