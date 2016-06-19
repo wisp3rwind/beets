@@ -18,13 +18,13 @@
 from __future__ import division, absolute_import, print_function
 
 import os
-from test import _common
 import sys
 import re
 
 from mock import MagicMock
 
-from test._common import unittest
+import test
+from test import unittest
 from beetsplug import lyrics
 from beets.library import Item
 from beets.util import confit, bytestring_path
@@ -186,7 +186,7 @@ def url_to_filename(url):
 
 
 def check_lyrics_fetched():
-    """Return True if lyrics_download_samples.py has been runned and lyrics
+    """Return True if lyrics_download_samples.py has been run and lyrics
     pages are present in resources directory"""
     lyrics_dirs = len([d for d in os.listdir(LYRICS_ROOT_DIR) if
                       os.path.isdir(os.path.join(LYRICS_ROOT_DIR, d))])
@@ -213,8 +213,8 @@ def is_lyrics_content_ok(title, text):
     keywords = LYRICS_TEXTS[google.slugify(title)]
     return all(x in text.lower() for x in keywords)
 
-LYRICS_ROOT_DIR = os.path.join(_common.RSRC, b'lyrics')
-LYRICS_TEXTS = confit.load_yaml(os.path.join(_common.RSRC, b'lyricstext.yaml'))
+LYRICS_ROOT_DIR = os.path.join(test.RSRC, b'lyrics')
+LYRICS_TEXTS = confit.load_yaml(os.path.join(test.RSRC, b'lyricstext.yaml'))
 DEFAULT_SONG = dict(artist=u'The Beatles', title=u'Lady Madonna')
 
 DEFAULT_SOURCES = [
