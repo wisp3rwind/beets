@@ -388,7 +388,8 @@ class TestCase(unittest.TestCase, Assertions):
         # TODO: how much time does this consume? should it be done more lazily?
         # How many tests actually need a temporary dir?
         self.temp_dir = mkdtemp()
-        beets.config['statefile'] = os.path.join(self.temp_dir, b'state.pickle')
+        beets.config['statefile'] = os.path.join(self.temp_dir,
+                                                 b'state.pickle')
         beets.config['library'] = os.path.join(self.temp_dir, b'library.db')
         self.libdir = os.path.join(self.temp_dir, b'libdir')
         beets.config['directory'] = self.libdir
@@ -513,7 +514,7 @@ class TestCase(unittest.TestCase, Assertions):
 
     # Safe file operations
 
-    def touch(self, path, dir=None, content=''):
+    def touch(self, path, dir=None, content='', mode='a+'):
         """Create a file at `path` with given content.
 
         If `dir` is given, it is prepended to `path`. After that, if the
@@ -530,7 +531,7 @@ class TestCase(unittest.TestCase, Assertions):
         if not os.path.isdir(parent):
             os.makedirs(util.syspath(parent))
 
-        with open(util.syspath(path), 'a+') as f:
+        with open(util.syspath(path), mode) as f:
             f.write(content)
         return path
 
@@ -587,6 +588,10 @@ class TestCase(unittest.TestCase, Assertions):
 
     # Library fixtures methods
 
+    # TODO: more default values? -> at least those accessed by autotag.match
+    # plus those that importer.align_album_level_fields infers other fields
+    # from.
+    # compare the old _common
     def create_item(self, **values):
         """Return an `Item` instance with sensible default values.
 
@@ -603,9 +608,13 @@ class TestCase(unittest.TestCase, Assertions):
         values_ = {
             'title': u't\u00eftle {0}',
             'artist': u'the \u00e4rtist',
+            'albumartist': u'the \u00e4lbum artist',
             'album': u'the \u00e4lbum',
             'track': item_count,
             'format': 'MP3',
+            'length': 60.0,
+            'mb_artistid': 'someID-3',
+            'mb_albumartistid': 'someID-4',
         }
         values_.update(values)
         values_['title'] = values_['title'].format(item_count)
@@ -619,7 +628,7 @@ class TestCase(unittest.TestCase, Assertions):
         # (or whether this function should be dropped instead)
         values_ = {
             'albumartist': u'album\u00e4rtist',
-            'album': u'the \u00e4lbum {1}',
+            'album': u'the \u00e4lbum {0}',
         }
         values_.update(values)
         item_count = self._get_item_count()
@@ -638,6 +647,7 @@ class TestCase(unittest.TestCase, Assertions):
         file.
         """
         src = os.path.join(RSRC, util.bytestring_path('full.' + ext))
+        # TODO: create in self.temp_dir
         handle, path = mkstemp()
         os.close(handle)
         shutil.copyfile(src, path)
@@ -656,9 +666,14 @@ class TestCase(unittest.TestCase, Assertions):
 
         self._mediafile_fixtures.append(path)
 
+        # TODO: return (path, mediafile) tuple
         return path
 
     def _get_item_count(self):
+        """Provides a unique number for use as track number and in song and
+        album titles that will be formatted into the respective fields
+        using standard strong formatting at position '{0}'.
+        """
         count = getattr(self, '__item_count', 0)
         self.__item_count = count + 1
         return count
@@ -791,6 +806,7 @@ class LibTestCase(TestCase):
             item.store()
         return item
 
+    # TODO: drop in favor of add_item_fixtures
     def add_item_fixture(self, **values):
         """Add an item with an actual audio file to the library.
         """
@@ -803,11 +819,12 @@ class LibTestCase(TestCase):
         item.store()
         return item
 
-    def add_album(self, item_count, album_fields={}, item_fields={}):
+    def add_album(self, item_count=1, album_fields={}, item_fields={}):
         # TODO: Should this use self.create_album() ?
         items = [self.add_item(item_fields) for i in range(item_count)]
         album = self.lib.add_album(items)
         album.update(album_fields)
+        album.store()
         return album
 
     def add_item_fixtures(self, ext='mp3', count=1):
@@ -826,7 +843,8 @@ class LibTestCase(TestCase):
             items.append(item)
         return items
 
-    def add_album_fixture(self, track_count=1, ext='mp3'):
+    def add_album_fixture(self, track_count=1, ext='mp3',
+                          item_fields={}, **album_fields):
         """Add an album with files to the database.
         """
         items = []
@@ -839,7 +857,17 @@ class LibTestCase(TestCase):
             item.move(copy=True)
             item.store()
             items.append(item)
-        return self.lib.add_album(items)
+        album = self.lib.add_album(items)
+        album.update(album_fields)
+        album.store()
+        for item in items:
+            # write item-level fields late. If they were written before
+            # album.store(), some colliding fields (i.e. those in
+            # library.Album.item_keys, for example added) could be
+            # overwritten, which is unwanted for some tests.
+            item.update(item_fields)
+            item.store()
+        return album
 
 
 class TestImportSession(importer.ImportSession):
