@@ -27,6 +27,7 @@ from test.helper import control_stdin, capture_log
 
 from mediafile import MediaFile
 from beets import util
+from beets.util import bytestring_path, displayable_path, syspath
 
 
 def shell_quote(text):
@@ -58,15 +59,15 @@ class TestHelper(helper.TestHelper):
         """
         display_tag = tag
         tag = tag.encode('utf-8')
-        self.assertTrue(os.path.isfile(path),
+        self.assertTrue(os.path.isfile(syspath(path)),
                         u'{0} is not a file'.format(
-                            util.displayable_path(path)))
+                            displayable_path(path)))
         with open(path, 'rb') as f:
             f.seek(-len(display_tag), os.SEEK_END)
             self.assertEqual(f.read(), tag,
                              u'{0} is not tagged with {1}'
                              .format(
-                                 util.displayable_path(path),
+                                 displayable_path(path),
                                  display_tag))
 
     def assertNoFileTag(self, path, tag):  # noqa
@@ -75,15 +76,15 @@ class TestHelper(helper.TestHelper):
         """
         display_tag = tag
         tag = tag.encode('utf-8')
-        self.assertTrue(os.path.isfile(path),
+        self.assertTrue(os.path.isfile(syspath(path)),
                         u'{0} is not a file'.format(
-                            util.displayable_path(path)))
+                            displayable_path(path)))
         with open(path, 'rb') as f:
             f.seek(-len(tag), os.SEEK_END)
             self.assertNotEqual(f.read(), tag,
                                 u'{0} is unexpectedly tagged with {1}'
                                 .format(
-                                    util.displayable_path(path),
+                                    displayable_path(path),
                                     display_tag))
 
 
@@ -120,7 +121,7 @@ class ImportConvertTest(unittest.TestCase, TestHelper):
 
         item = self.lib.items().get()
         self.assertIsNotNone(item)
-        self.assertTrue(os.path.isfile(item.path))
+        self.assertTrue(os.path.isfile(syspath(item.path)))
 
     def test_delete_originals(self):
         self.config['convert']['delete_originals'] = True
@@ -159,7 +160,7 @@ class ConvertCliTest(unittest.TestCase, TestHelper, ConvertCommand):
         self.item = self.album.items()[0]
         self.load_plugins('convert')
 
-        self.convert_dest = util.bytestring_path(
+        self.convert_dest = bytestring_path(
             os.path.join(self.temp_dir, b'convert_dest')
         )
         self.config['convert'] = {
@@ -194,7 +195,7 @@ class ConvertCliTest(unittest.TestCase, TestHelper, ConvertCommand):
         with control_stdin('n'):
             self.run_convert()
         converted = os.path.join(self.convert_dest, b'converted.mp3')
-        self.assertFalse(os.path.isfile(converted))
+        self.assertFalse(os.path.isfile(syspath(converted)))
 
     def test_convert_keep_new(self):
         self.assertEqual(os.path.splitext(self.item.path)[1], b'.ogg')
@@ -235,7 +236,7 @@ class ConvertCliTest(unittest.TestCase, TestHelper, ConvertCommand):
     def test_pretend(self):
         self.run_convert('--pretend')
         converted = os.path.join(self.convert_dest, b'converted.mp3')
-        self.assertFalse(os.path.exists(converted))
+        self.assertFalse(os.path.exists(syspath(converted)))
 
     def test_empty_query(self):
         with capture_log('beets.convert') as logs:
